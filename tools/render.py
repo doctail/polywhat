@@ -99,6 +99,11 @@ def main():
                     "-pix_fmt", "yuv420p", "-af", "loudnorm=I=-15:TP=-1.5", "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart", "-shortest", tmp], check=True)
     os.replace(tmp, mp4)
+    if not a.preview and not a.bench:   # small review copy (~1/10 size) to send over chat
+        light = os.path.join(out_root, tag + "-light.mp4")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", mp4, "-vf", "scale=854:480", "-c:v", "libx264",
+                        "-preset", "veryfast", "-crf", "30", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", light], check=True)
+        log(f"light copy -> {light}")
     log(f"DONE in {(time.time() - t0) / 60:.1f} min -> {mp4}")
 
 if __name__ == "__main__":
