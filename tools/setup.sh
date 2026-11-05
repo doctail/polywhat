@@ -13,7 +13,7 @@ if [ ${#need_apt[@]} -gt 0 ]; then
   apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${need_apt[@]}" >/dev/null
 fi
 
-python3 -c "import numpy, PIL" 2>/dev/null || python3 -m pip install -q numpy pillow
+python3 -c "import numpy, PIL, scipy" 2>/dev/null || python3 -m pip install -q numpy pillow scipy
 
 if [ ! -x "$BL_DIR/blender" ]; then
   FILE=$(curl -s "https://download.blender.org/release/Blender${BL_SERIES}/" | grep -o "blender-${BL_SERIES}\.[0-9]*-linux-x64\.tar\.xz" | sort -V | tail -1)

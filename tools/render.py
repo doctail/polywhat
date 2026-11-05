@@ -37,30 +37,44 @@ def _comp(job):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("video"); ap.add_argument("--preview", action="store_true")
-    ap.add_argument("--engine", default="cycles"); ap.add_argument("--samples", type=int, default=None)
+    ap.add_argument("--engine", default="eevee"); ap.add_argument("--samples", type=int, default=None)
     ap.add_argument("--device", default="gpu"); ap.add_argument("--res", default=None)
     ap.add_argument("--bench", type=int, default=0, help="render only the first N frames and report seconds per frame")
     a = ap.parse_args()
     vdir = os.path.join(ROOT, "videos", a.video)
     if not os.path.isdir(vdir): sys.exit(f"unknown video '{a.video}'. Available: {os.listdir(os.path.join(ROOT, 'videos'))}")
     out_root = os.environ.get("OUT_DIR") or ("/workspace/polywhat-out" if os.path.isdir("/workspace") else os.path.join(ROOT, "out"))
-    tag = a.video + ("-" + a.engine if a.engine != "cycles" else "") + ("-preview" if a.preview else "") + (f"-bench" if a.bench else "")
+    tag = a.video + ("-" + a.engine if a.engine != "eevee" else "") + ("-preview" if a.preview else "") + (f"-bench" if a.bench else "")
     work = os.path.join(out_root, tag); raw, comp = os.path.join(work, "raw"), os.path.join(work, "comp")
     os.makedirs(raw, exist_ok=True); os.makedirs(comp, exist_ok=True)
     TL = load_timeline(vdir)
     res = a.res or ("960x540" if a.preview else "1920x1080")
-    samples = a.samples or ((16 if a.preview else 64) if a.engine == "cycles" else (16 if a.preview else 32))
+    samples = a.samples or ((16 if a.preview else 64) if a.engine == "cycles" else (12 if a.preview else 24))
     t0 = time.time()
 
     log(f"1/4 3D render {a.video} {res} engine={a.engine} samples={samples}")
-    cmd = find_blender() + [os.path.join(vdir, "scene.py"), "--", "--out", raw, "--res", res,
-                            "--engine", a.engine, "--samples", str(samples), "--device", a.device]
+    base = find_blender() + [os.path.join(vdir, "scene.py"), "--", "--out", raw, "--res", res,
+                             "--engine", a.engine, "--samples", str(samples), "--device", a.device]
+    acts = getattr(TL, "ACTS", None)
+    def done_frames():
+        return {int(os.path.basename(f)[:-4]) for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0 and os.path.basename(f)[:-4].isdigit()}
     if a.bench:
-        cmd += ["--frames", f"1-{a.bench}"]
+        cmd = base + ["--frames", f"1-{a.bench}"] + (["--act", acts[0][0]] if acts else [])
         tb = time.time(); subprocess.run(cmd, check=True); el = time.time() - tb
         log(f"BENCH {a.bench} frames in {el:.0f}s (includes ~10-30s startup) -> ~{el / a.bench:.2f} s/frame"); return
-    subprocess.run(cmd, check=True)
-    frames = sorted(f for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0)
+    if acts:
+        for name, s0, s1 in acts:
+            f0, f1 = int(round(s0 * TL.FPS)) + 1, int(round(s1 * TL.FPS))
+            have = done_frames()
+            if all(f in have for f in range(f0, f1 + 1)):
+                log(f"   act {name}: already rendered"); continue
+            ta = time.time(); log(f"   act {name}: frames {f0}-{f1}")
+            subprocess.run(base + ["--act", name], check=True)
+            log(f"   act {name}: {time.time() - ta:.0f}s ({(time.time() - ta) / (f1 - f0 + 1):.2f} s/frame)")
+    else:
+        subprocess.run(base, check=True)
+    frames = sorted((f for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0 and os.path.basename(f)[:-4].isdigit()),
+                    key=lambda f: int(os.path.basename(f)[:-4]))
     n_exp = int(TL.DURATION * TL.FPS)
     if len(frames) < n_exp: sys.exit(f"only {len(frames)}/{n_exp} frames rendered — re-run the same command to resume")
     log(f"   {len(frames)} frames in {time.time() - t0:.0f}s")
@@ -82,7 +96,7 @@ def main():
     mp4 = os.path.join(out_root, tag + ".mp4"); tmp = mp4 + ".tmp.mp4"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(TL.FPS), "-i", os.path.join(comp, "%05d.jpg"),
                     "-i", wav, "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "slow", "-crf", "17",
-                    "-pix_fmt", "yuv420p", "-af", "loudnorm=I=-14:TP=-1.5", "-c:a", "aac", "-b:a", "192k",
+                    "-pix_fmt", "yuv420p", "-af", "loudnorm=I=-15:TP=-1.5", "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart", "-shortest", tmp], check=True)
     os.replace(tmp, mp4)
     log(f"DONE in {(time.time() - t0) / 60:.1f} min -> {mp4}")

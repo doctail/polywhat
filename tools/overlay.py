@@ -65,7 +65,7 @@ def compose(img, t, TL):
     spaced(d, (R, int(92 * k)), HUD["right_label"], sans(int(15 * k)), white, 3.2 * k, anchor="rs")
     shadow_text(base, (R, int(178 * k)), st["right_value"], serif(int(92 * k)), (255, 255, 255, 255), "rs", 10 * k, 1.0)
     d = ImageDraw.Draw(base)
-    spaced(d, (R, int(214 * k)), HUD["right_sub"], sans(int(14 * k)), dim, 3.0 * k, anchor="rs")
+    spaced(d, (R, int(214 * k)), st.get("right_sub", HUD["right_sub"]), sans(int(14 * k)), dim, 3.0 * k, anchor="rs")
     for a, b, s in TL.CAPTIONS:
         if a <= t <= b:
             al = min(clamp((t - a) / .35), clamp((b - t) / .35))
