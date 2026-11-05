@@ -1,0 +1,133 @@
+"""White silhouette icons for the HUD comparison line (cairo). Output: tools/icons/<name>.png (240x150, transparent).
+Run once locally; the PNGs are committed so the pod only needs PIL."""
+import math, os, random
+import cairo
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+W, H = 240, 150
+WHITE = (1, 1, 1)
+
+def canvas():
+    s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H); c = cairo.Context(s)
+    c.set_source_rgba(1, 1, 1, 0.95); c.set_line_cap(cairo.LINE_CAP_ROUND); c.set_line_join(cairo.LINE_JOIN_ROUND)
+    return s, c
+
+def rrect(c, x, y, w, h, r):
+    c.new_sub_path(); c.arc(x + w - r, y + r, r, -math.pi / 2, 0); c.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+    c.arc(x + r, y + h - r, r, math.pi / 2, math.pi); c.arc(x + r, y + r, r, math.pi, 1.5 * math.pi); c.close_path()
+
+def ell(c, x, y, rx, ry):
+    c.save(); c.translate(x, y); c.scale(rx, ry); c.arc(0, 0, 1, 0, 2 * math.pi); c.restore()
+
+def cut(c):  # draw in 'erase' mode
+    c.set_operator(cairo.OPERATOR_CLEAR)
+
+def paint(c):
+    c.set_operator(cairo.OPERATOR_OVER); c.set_source_rgba(1, 1, 1, 0.95)
+
+def person(c, x, y, s):
+    c.arc(x, y - 62 * s, 13 * s, 0, 2 * math.pi); c.fill()
+    rrect(c, x - 17 * s, y - 46 * s, 34 * s, 46 * s, 12 * s); c.fill()
+    c.set_line_width(11 * s); c.move_to(x - 8 * s, y - 4 * s); c.line_to(x - 9 * s, y + 38 * s); c.stroke(); c.move_to(x + 8 * s, y - 4 * s); c.line_to(x + 9 * s, y + 38 * s); c.stroke()
+
+def icons():
+    D = {}
+    def people(c): person(c, 95, 100, 1.0); person(c, 145, 100, 1.0)
+    def bear(c):
+        ell(c, 110, 85, 62, 34); c.fill(); c.arc(170, 70, 24, 0, 2 * math.pi); c.fill()
+        c.arc(160, 48, 9, 0, 2 * math.pi); c.fill(); c.arc(181, 48, 9, 0, 2 * math.pi); c.fill(); ell(c, 192, 76, 12, 9); c.fill()
+        for x in (66, 90, 130, 152): rrect(c, x - 9, 95, 18, 40, 6); c.fill()
+    def bed(c):
+        rrect(c, 30, 90, 180, 16, 4); c.fill(); rrect(c, 30, 50, 14, 80, 4); c.fill(); rrect(c, 196, 76, 14, 54, 4); c.fill()
+        rrect(c, 44, 74, 152, 18, 8); c.fill(); rrect(c, 50, 58, 40, 16, 8); c.fill()
+    def car(c):
+        rrect(c, 25, 72, 190, 40, 14); c.fill()
+        c.move_to(60, 74); c.line_to(85, 42); c.line_to(160, 42); c.line_to(185, 74); c.close_path(); c.fill()
+        cut(c); c.move_to(76, 70); c.line_to(92, 50); c.line_to(118, 50); c.line_to(118, 70); c.close_path(); c.fill()
+        c.move_to(126, 70); c.line_to(126, 50); c.line_to(155, 50); c.line_to(172, 70); c.close_path(); c.fill()
+        c.arc(70, 114, 20, 0, 2 * math.pi); c.fill(); c.arc(172, 114, 20, 0, 2 * math.pi); c.fill(); paint(c)
+        c.arc(70, 114, 14, 0, 2 * math.pi); c.fill(); c.arc(172, 114, 14, 0, 2 * math.pi); c.fill()
+    def elephant(c):
+        ell(c, 105, 75, 65, 40); c.fill(); c.arc(170, 62, 30, 0, 2 * math.pi); c.fill()
+        for x in (62, 88, 122, 146): rrect(c, x - 11, 90, 22, 48, 6); c.fill()
+        c.set_line_width(14); c.move_to(192, 70); c.curve_to(205, 95, 196, 118, 210, 132); c.stroke()
+        cut(c); ell(c, 158, 64, 15, 22); c.fill(); paint(c); ell(c, 156, 64, 11, 18); c.set_source_rgba(1, 1, 1, 0.6); c.fill(); paint(c)
+    def whale(c):
+        c.move_to(30, 80); c.curve_to(35, 40, 150, 35, 195, 62); c.curve_to(212, 72, 210, 100, 190, 104); c.curve_to(130, 112, 60, 108, 30, 80); c.fill()
+        c.move_to(36, 80); c.line_to(10, 56); c.line_to(18, 80); c.line_to(8, 102); c.close_path(); c.fill()
+        cut(c); c.set_line_width(4); c.set_dash([8, 6]); c.move_to(110, 30); c.line_to(110, 120); c.stroke(); c.set_dash([]); paint(c)
+    def concrete(c):
+        rrect(c, 40, 40, 160, 90, 6); c.fill(); cut(c); c.set_line_width(5)
+        c.move_to(110, 40); c.line_to(100, 70); c.line_to(122, 88); c.line_to(108, 130); c.stroke()
+        c.move_to(100, 70); c.line_to(70, 82); c.stroke(); c.move_to(122, 88); c.line_to(160, 96); c.stroke(); paint(c)
+    def granite(c):
+        pts = [(40, 120), (60, 60), (100, 32), (150, 40), (196, 76), (204, 120)]
+        c.move_to(*pts[0]); [c.line_to(*p) for p in pts[1:]]; c.close_path(); c.fill()
+        cut(c); c.set_line_width(3)
+        for a, b in (((60, 60), (110, 84)), ((100, 32), (110, 84)), ((150, 40), (110, 84)), ((196, 76), (150, 96)), ((110, 84), (150, 96)), ((150, 96), (204, 120)), ((110, 84), (90, 120))):
+            c.move_to(*a); c.line_to(*b); c.stroke()
+        paint(c)
+    def ship(c):
+        c.move_to(10, 92); c.line_to(232, 92); c.line_to(214, 120); c.line_to(26, 120); c.close_path(); c.fill()
+        rrect(c, 6, 84, 230, 10, 2); c.fill(); rrect(c, 150, 50, 22, 36, 3); c.fill(); rrect(c, 158, 34, 6, 18, 2); c.fill()
+    def pyramid(c):
+        c.move_to(30, 128); c.line_to(120, 30); c.line_to(210, 128); c.close_path(); c.fill()
+        cut(c); c.set_line_width(2.5)
+        for i in range(1, 7):
+            y = 30 + 98 * i / 7; hw = 90 * i / 7; c.move_to(120 - hw, y); c.line_to(120 + hw, y); c.stroke()
+        paint(c)
+    def gravity(c):
+        c.arc(120, 75, 14, 0, 2 * math.pi); c.fill(); c.set_line_width(4)
+        for r, al in ((32, 0.95), (50, 0.65), (68, 0.35)):
+            c.set_source_rgba(1, 1, 1, al); c.set_dash([10, 7]); c.arc(120, 75, r, 0, 2 * math.pi); c.stroke()
+        c.set_dash([]); paint(c); c.set_line_width(5)
+        for a in (0, math.pi):
+            x0 = 120 + math.cos(a) * 100; x1 = 120 + math.cos(a) * 76
+            c.move_to(x0, 75); c.line_to(x1, 75); c.stroke(); d = -math.cos(a)
+            c.move_to(x1, 75); c.line_to(x1 - d * 10, 67); c.stroke(); c.move_to(x1, 75); c.line_to(x1 - d * 10, 83); c.stroke()
+    def asteroid(c):
+        rr = random.Random(3); pts = []
+        for i in range(13):
+            a = i / 13 * 2 * math.pi; r = 52 + rr.uniform(-10, 10); pts.append((130 + math.cos(a) * r * 1.2, 75 + math.sin(a) * r))
+        c.move_to(*pts[0]); [c.line_to(*p) for p in pts[1:]]; c.close_path(); c.fill()
+        cut(c)
+        for x, y, r in ((110, 60, 10), (150, 90, 13), (160, 55, 7)): c.arc(x, y, r, 0, 2 * math.pi); c.fill()
+        paint(c); c.set_line_width(6); c.set_source_rgba(1, 1, 1, 0.5)
+        for k in range(3): c.move_to(60 - k * 8, 108 + k * 8); c.line_to(16 - k * 8, 132 + k * 8); c.stroke()
+        paint(c)
+    def moon(c):
+        c.arc(120, 75, 58, 0, 2 * math.pi); c.fill(); cut(c)
+        for x, y, r in ((100, 55, 12), (140, 92, 16), (138, 48, 7), (95, 98, 8)): c.arc(x, y, r, 0, 2 * math.pi); c.fill()
+        paint(c)
+    def earth(c):
+        c.arc(120, 75, 58, 0, 2 * math.pi); c.fill(); cut(c); c.set_line_width(3)
+        for k in (-0.6, 0, 0.6): ell(c, 120, 75, 58 * math.cos(k * 1.2) if k else 1, 58); c.stroke()
+        for y in (45, 75, 105): c.move_to(62, y); c.line_to(178, y); c.stroke()
+        paint(c)
+    def blackhole(c):
+        c.set_line_width(14); ell(c, 120, 78, 104, 24); c.stroke()
+        cut(c); c.arc(120, 72, 34, 0, 2 * math.pi); c.fill(); paint(c)
+        c.set_line_width(14); c.save(); c.rectangle(0, 78, W, H); c.clip(); ell(c, 120, 78, 104, 24); c.stroke(); c.restore()
+        c.set_line_width(4); c.arc(120, 72, 38, 0, 2 * math.pi); c.stroke()
+    def sun(c):
+        c.arc(120, 75, 36, 0, 2 * math.pi); c.fill(); c.set_line_width(7)
+        for i in range(12):
+            a = i / 12 * 2 * math.pi; c.move_to(120 + math.cos(a) * 46, 75 + math.sin(a) * 46); c.line_to(120 + math.cos(a) * 66, 75 + math.sin(a) * 66); c.stroke()
+    def galaxy(c):
+        rr = random.Random(5)
+        for i in range(700):
+            arm = i % 2; d = rr.random() ** 0.8; a = arm * math.pi + d * 5.2 + rr.gauss(0, 0.25)
+            x, y = 120 + math.cos(a) * d * 100, 75 + math.sin(a) * d * 52
+            c.arc(x, y, rr.uniform(0.8, 2.2), 0, 2 * math.pi); c.fill()
+        c.arc(120, 75, 13, 0, 2 * math.pi); c.fill()
+    for k, fn in dict(people=people, bear=bear, bed=bed, car=car, elephant=elephant, whale=whale, concrete=concrete, granite=granite,
+                      ship=ship, pyramid=pyramid, gravity=gravity, asteroid=asteroid, moon=moon, earth=earth, blackhole=blackhole,
+                      sun=sun, galaxy=galaxy).items():
+        D[k] = fn
+    return D
+
+if __name__ == "__main__":
+    os.makedirs(OUT, exist_ok=True)
+    for name, fn in icons().items():
+        s, c = canvas(); fn(c); s.write_to_png(os.path.join(OUT, name + ".png"))
+    print("icons:", len(icons()))

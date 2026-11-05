@@ -16,6 +16,12 @@ def serif(s): return font("EBGaramond-Medium.ttf", s)
 def italic(s): return font("EBGaramond-Italic.ttf", s)
 def sans(s): return font("Inter-SemiBold.ttf", s)
 
+ICONS = os.path.join(ROOT, "tools", "icons")
+@lru_cache(None)
+def icon_img(name, height):
+    im = Image.open(os.path.join(ICONS, name + ".png")).convert("RGBA")
+    return im.resize((int(im.width * height / im.height), height), Image.LANCZOS)
+
 @lru_cache(None)
 def vignette(w, h):
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -73,10 +79,21 @@ def compose(img, t, TL):
     shadow_text(base, (L - 4 * k, int(178 * k)), st["value"], serif(int(92 * k)), (255, 255, 255, 255), "ls", 10 * k, 1.0)
     d = ImageDraw.Draw(base)
     spaced(d, (L, int(214 * k)), st["sub"], sans(int(14 * k)), dim, 3.0 * k)
-    d.rectangle([L, int(236 * k), L + int(34 * k), int(238 * k)], fill=(255, 190, 90, 230))
-    w = spaced(d, (L, int(270 * k)), "NEXT", sans(int(13 * k)), dimmer, 3.0 * k)
-    spaced(d, (L + w + 14 * k, int(270 * k)), st["next_label"], sans(int(13 * k)), white, 3.0 * k)
-    rich(d, (L, int(312 * k)), st["next_value"], serif(int(34 * k)), white, "ls")
+    dy = 0
+    if "icon" in st:                       # comparison picture under the 'AS HEAVY AS ...' line
+        dy = int(104 * k)
+        if st["icon"] and st.get("icon_alpha", 1) > 0:
+            ic = icon_img(st["icon"], int(84 * k)).copy()
+            a = st.get("icon_alpha", 1.0)
+            if a < 1: ic.putalpha(ic.getchannel("A").point(lambda v: int(v * a)))
+            sh = Image.new("RGBA", base.size, (0, 0, 0, 0)); sh.paste((0, 0, 0, 140), (L, int(234 * k)), ic)
+            base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(8 * k)))
+            base.alpha_composite(ic, (L, int(232 * k)))
+            d = ImageDraw.Draw(base)
+    d.rectangle([L, int(236 * k) + dy, L + int(34 * k), int(238 * k) + dy], fill=(255, 190, 90, 230))
+    w = spaced(d, (L, int(270 * k) + dy), "NEXT", sans(int(13 * k)), dimmer, 3.0 * k)
+    spaced(d, (L + w + 14 * k, int(270 * k) + dy), st["next_label"], sans(int(13 * k)), white, 3.0 * k)
+    rich(d, (L, int(312 * k) + dy), st["next_value"], serif(int(34 * k)), white, "ls")
     R = W - int(80 * k)
     spaced(d, (R, int(92 * k)), HUD["right_label"], sans(int(15 * k)), white, 3.2 * k, anchor="rs")
     shadow_text(base, (R, int(178 * k)), st["right_value"], serif(int(92 * k)), (255, 255, 255, 255), "rs", 10 * k, 1.0)

@@ -61,7 +61,7 @@ fx.add(E["granite"], crack(0.6, 0.6, 30, 300, 2000)); fx.add(E["granite"], thud(
 fx.add(E["close"], thud(30, 2.0, 0.6)); fx.add(E["close"] - 0.5, whoosh(2.5, 0.2, 120, 600))
 # cavity: pebbles then rocks hitting you
 for k in range(70):
-    tk = E["pebbles"] - 14 + (k / 70) ** 0.7 * 38; big = tk > E["pebbles"]
+    tko = TL.EVENTS_OLD["pebbles"] - 14 + (k / 70) ** 0.7 * 38; big = tko > TL.EVENTS_OLD["pebbles"]; tk = TL.n(tko)
     fx.add(tk, crack(0.12, 0.08 + (0.14 if big else 0), 4, 800 if big else 2000, 4000 if big else 7000))
     if big and k % 3 == 0: fx.add(tk, thud(60, 0.4, 0.25))
 fx.add(E["planet"], boom(3.5, 0.5, 38))
@@ -75,9 +75,9 @@ fx.add(E["core"], boom(4.0, 0.7, 30))
 sa, sb = TL.ACTS[4][1], TL.ACTS[4][2]
 fx.add(sa, bp(noise(sb - sa), 200, 900) * 0.05 * np.linspace(0.5, 1.5, int((sb - sa) * SR)))
 fx.add(E["plane"], whoosh(9.0, 0.25, 80, 500))
-for k in range(10): fx.add(276 + k * 5, creak(2.0, 0.15, 10, 25, (150, 600)))
-fx.add(285.0, crack(0.8, 0.6, 30, 500, 3000)); fx.add(285.4, thud(45, 1.5, 0.6)); fx.add(285.5, debris(2.5, 0.3, 50))
-fx.add(298.0, debris(3.0, 0.35, 70)); fx.add(298.0, thud(50, 1.0, 0.5))
+for k in range(10): fx.add(TL.n(276 + k * 5), creak(2.0, 0.15, 10, 25, (150, 600)))
+fx.add(TL.n(285.0), crack(0.8, 0.6, 30, 500, 3000)); fx.add(TL.n(285.4), thud(45, 1.5, 0.6)); fx.add(TL.n(285.5), debris(2.5, 0.3, 50))
+fx.add(TL.n(298.0), debris(3.0, 0.35, 70)); fx.add(TL.n(298.0), thud(50, 1.0, 0.5))
 fx.add(E["crush"], rumble(5.0, 0.6, 80) * np.linspace(0.2, 1.0, 5 * SR))
 # space: quiet; big moments only
 fx.add(E["bh"] - 0.6, whoosh(1.2, 0.3, 100, 800)); fx.add(E["bh"], boom(6.0, 0.9, 28))

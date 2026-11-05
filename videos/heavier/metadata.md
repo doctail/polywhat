@@ -16,11 +16,11 @@ All of it from one rule: 70 kg × 2, once an hour.
 0:00 The scale
 0:36 Sinking into the ground
 2:00 A planet inside a planet
-2:50 Falling to the core
-4:05 Meanwhile, on the surface
-5:30 You become a black hole
-6:50 Heavier than Sagittarius A*
-8:15 117 doublings
+2:34 Falling to the core
+3:49 Meanwhile, on the surface
+4:49 You become a black hole
+6:09 Heavier than Sagittarius A*
+7:40 117 doublings
 
 The numbers: mass = 70 kg × 2^hour, while your body stays the same size. Comparisons are approximate (the mass of the dinosaur-killing asteroid, for example, is only known to within a range).
 

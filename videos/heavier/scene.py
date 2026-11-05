@@ -13,7 +13,7 @@ get = args(sys.argv)
 ACT = get("--act", "house"); OUT = get("--out", "/tmp/heavier_raw"); RES = get("--res", "1920x1080")
 ENGINE = get("--engine", "eevee"); SAMPLES = int(get("--samples", "24")); DEVICE = get("--device", "gpu")
 TIMES = get("--times"); FRAMES = get("--frames")
-FPS = TL.FPS; E = TL.EVENTS
+FPS = TL.FPS; E = TL.EVENTS_OLD   # scenes are written in the original timing; frames are mapped with TL.o()
 A0, A1 = [(a, b) for n, a, b in TL.ACTS if n == ACT][0]
 F0, F1 = int(round(A0 * FPS)) + 1, int(round(A1 * FPS))
 scene = reset()
@@ -180,7 +180,7 @@ def act_house():
         for h, s in ((hL, -1), (hR, 1)):
             h.location = (s * hx, hy + s * fl, hz); h.rotation_euler = (hrx, s * -0.25, s * -0.1); key(h, "location", f); key(h, "rotation_euler", f)
         vis(stand, t >= E["walk"] + 1.2, f)
-        m = TL.mass_at(t) if t < E["walk"] + 1.0 else None
+        m = TL.mass_at(TL.n(t)) if t < E["walk"] + 1.0 else None
         dg = [None if ch == " " else int(ch) for ch in str(int(round(m))).rjust(3)[-3:]] if m is not None else [None] * 3
         for di in range(3):
             on = (SEGS[dg[di]] if dg[di] is not None else "") if m is not None else "g"
@@ -274,8 +274,27 @@ def act_shaft():
     world((0.02, 0.02, 0.03), 0.2)
     tube("shaft", 2.0, -175, 1.0, 1.0, strata)
     veins("shaft_veins", 1.0, -72, -175, 300, lambda d: ((0xff7a2a if d < 130 else 0xffb050), 0 if d < 72 else 2.0 + 4.0 * cl((d - 72) / 90)), width=0.012)
-    topdisk = ico("topdisk", 1.0, 0, (0, 2.05, 0), sub=2, material=emission_mat(0xfff1d8, 8.0)); topdisk.scale = (1, 1, 0.05)
-    toplight = light('SPOT', "toplight", 900, (1.0, 0.95, 0.85), (0, 1.6, 0), (0, -10, 0)); toplight.data.spot_size = math.radians(70)
+    # looking up you see where you came from: jagged broken floors, the lit room above, its ceiling and lamp
+    top = []
+    for ring_y, r0, cols in ((2.0, 1.0, (0x8a6a4c, 0x7f6145)), (5.0, 1.4, (0xc29466, 0xbb8d5f))):
+        for ix in range(-8, 8):
+            for iz in range(-8, 8):
+                x, z = ix * 0.5 + 0.25, iz * 0.5 + 0.25; d = math.hypot(x, z)
+                if d < r0 + rnd.uniform(-0.2, 0.45) or d > 4.2: continue
+                top.append(box(f"tt{ring_y}_{ix}_{iz}", 0.5, 0.25, 0.5, cols[(ix + iz) % 2], (x, ring_y + 0.125, z), rough=0.6))
+        for k in range(10):   # snapped boards hanging into the hole
+            a = rnd.random() * math.tau; L = rnd.uniform(0.4, 0.9)
+            b = box(f"board{ring_y}{k}", 0.08, L, 0.18, cols[0], (math.cos(a) * (r0 + 0.1), ring_y - L / 2 + 0.1, math.sin(a) * (r0 + 0.1)), rough=0.7)
+            b.rotation_euler = (rnd.uniform(-0.4, 0.4), rnd.uniform(-0.4, 0.4), a); top.append(b)
+    top.append(box("ceiling", 9, 0.2, 9, 0xf3eee6, (0, 8.0, 0)))
+    for nm, x, z, w, d in (("tw1", 0, -4.4, 9, 0.2), ("tw2", 0, 4.4, 9, 0.2), ("tw3", -4.4, 0, 0.2, 9), ("tw4", 4.4, 0, 0.2, 9)):
+        top.append(box(nm, w, 5.6, d, 0xece5d8, (x, 5.2 + 2.8, z)))
+    top.append(box("lampcord", 0.02, 0.6, 0.02, 0x222222, (0.6, 7.6, -0.4))); top.append(box("bulb", 0.25, 0.2, 0.25, 0xfff0d0, (0.6, 7.25, -0.4), emit=6))
+    merge_static("shaft_top", top)
+    room = light('AREA', "roomlight", 500, (1.0, 0.92, 0.8), (0, 7.6, 0), (0, 0, 0), size=6)
+    light('POINT', "bulblight", 300, (1.0, 0.85, 0.65), (0.6, 7.0, -0.4), soft=0.3)
+    toplight = light('SPOT', "toplight", 600, (1.0, 0.95, 0.85), (0, 1.6, 0), (0, -10, 0)); toplight.data.spot_size = math.radians(70)
+    iris = ico("iris", 1.5, 0x3a2c24, (0, 1.85, 0), sub=2, material=mat(0x3a2c24, 1.0)); iris.scale = (0.001, 0.001, 0.001)
     heat = light('POINT', "heat", 0, (1.0, 0.55, 0.25), (0, 0, 0), soft=0.6)
     fill = light('POINT', "fill", 60, (1.0, 0.92, 0.85), (0, 0, 0), soft=0.4)
     # pipes and cables crossing the shaft near the top
@@ -312,8 +331,8 @@ def act_shaft():
         cam_key(cam, p, p + dirv, f, roll=0.05 * math.sin(t * 0.3))
         heat.location = B(0, y - 0.6, 0); heat.data.energy = 90 * cl((d - 60) / 80) ** 1.3; key(heat, "location", f); heat.data.keyframe_insert("energy", frame=f)
         fill.location = B(0, y + 0.4, 0); fill.data.energy = 60 * (1 - 0.6 * cl((d - 70) / 60)); key(fill, "location", f); fill.data.keyframe_insert("energy", frame=f)
-        s = 1 - sm((t - E["close"]) / 3.0); topdisk.scale = (s, s, 0.05); key(topdisk, "scale", f)
-        toplight.data.energy = 900 * s; toplight.data.keyframe_insert("energy", frame=f)
+        s = 1 - sm((t - E["close"]) / 3.0); c_ = max(0.001, 1 - s); iris.scale = (c_, c_, 0.12 * c_ + 0.001); key(iris, "scale", f)
+        toplight.data.energy = 600 * s; toplight.data.keyframe_insert("energy", frame=f)
         k = cl((t - E["dust"]) / 6)
         for o, (a, dy, ph) in zip(dust, dseed):
             r = 0.95 - 0.9 * ((ph + (t - E["dust"]) * 0.12) % 1.0) * k if k > 0 else 0.95
@@ -446,7 +465,7 @@ def act_surface():
     merge_static("surface_static", stat); bake_modifiers(scene)
     cam = camera(60); hL, hR = hand(cam, -1), hand(cam, 1)
     def frame(t, f):
-        g = TL.surface_g(t)
+        g = TL.surface_g(TL.n(t))
         eye = max(0.35, 1.65 * g ** -0.6)
         crush = sm((t - E["crush"]) / 4)
         eye = lerp(eye, 0.12, crush)
@@ -589,7 +608,7 @@ def act_galaxy(outro=False):
         near.append(dict(o=o, v=v, a=math.atan2(v.z, v.x), r=v.length, y=v.y))
     cam = camera(50)
     def bh_size(t):  # visual size grows with log(mass)
-        h = TL.hour_at(t); return 2.0 * 2 ** ((h - 95) / 7.0)
+        h = TL.hour_at(TL.n(t)); return 2.0 * 2 ** ((h - 95) / 7.0)
     def frame(t, f):
         s = bh_size(t); bh.scale = (s,) * 3; disk.scale = (s,) * 3
         disk.rotation_euler = (math.radians(70), 0, t * 0.5)
@@ -642,7 +661,7 @@ if TIMES:
 elif FRAMES:
     a, b = map(int, FRAMES.split("-")); f_lo, f_hi = max(F0, a), min(F1, b)
 for f in range(f_lo, f_hi + 1):
-    frame_fn((f - 1) / FPS, f)
+    frame_fn(TL.o((f - 1) / FPS), f)
 setup_render(scene, OUT, RES, ENGINE, SAMPLES, DEVICE, FPS, f_lo, f_hi, exposure=0.6 if get("--thumb") else {"house": 0.35, "surface": 0.2}.get(ACT, 0.0))
 if get("--thumb"):
     scene.view_settings.view_transform = 'Standard'; scene.view_settings.look = 'None'; scene.view_settings.exposure = 0.3

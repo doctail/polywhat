@@ -132,13 +132,13 @@ CAPTIONS = [
 
 # milestones: (hour, label, value shown under NEXT)
 MILESTONES = [   # (hour you cross it, label, its mass)
-    (1, "TWO ADULTS", "140 kg"), (2, "A GRIZZLY BEAR", "~280 kg"), (3, "WHAT YOUR BED CAN HOLD", "~500 kg"),
-    (4, "A SMALL CAR", "~1.1 t"), (6, "AN ELEPHANT", "~4.5 t"), (10, "HALF A BLUE WHALE", "~72 t"),
-    (15, "WHAT CONCRETE CAN HOLD", "~2,000 t"), (17, "WHAT GRANITE CAN HOLD", "~9,000 t"),
-    (20.4, "THE LARGEST AIRCRAFT CARRIER", "~100,000 t"), (26.4, "THE GREAT PYRAMID", "~6 million t"),
-    (31, "EARTH-STRENGTH GRAVITY", "at one meter"), (50, "THE DINOSAUR ASTEROID", "trillions of t"),
-    (69.8, "THE MOON", "1 Moon"), (76.3, "THE EARTH", "1 Earth"), (82, "A BLACK HOLE YOUR SIZE", "57 Earths"),
-    (94.5, "THE SUN", "1 Sun"), (116.6, "SAGITTARIUS A*", "4.3 million Suns"),
+    (1, "TWO ADULTS", "140 kg", "people"), (2, "A GRIZZLY BEAR", "~280 kg", "bear"), (3, "WHAT YOUR BED CAN HOLD", "~500 kg", "bed"),
+    (4, "A SMALL CAR", "~1.1 t", "car"), (6, "AN ELEPHANT", "~4.5 t", "elephant"), (10, "HALF A BLUE WHALE", "~72 t", "whale"),
+    (15, "WHAT CONCRETE CAN HOLD", "~2,000 t", "concrete"), (17, "WHAT GRANITE CAN HOLD", "~9,000 t", "granite"),
+    (20.4, "THE LARGEST AIRCRAFT CARRIER", "~100,000 t", "ship"), (26.4, "THE GREAT PYRAMID", "~6 million t", "pyramid"),
+    (31, "EARTH-STRENGTH GRAVITY", "at one meter", "gravity"), (50, "THE DINOSAUR ASTEROID", "trillions of t", "asteroid"),
+    (69.8, "THE MOON", "1 Moon", "moon"), (76.3, "THE EARTH", "1 Earth", "earth"), (82, "A BLACK HOLE YOUR SIZE", "57 Earths", "blackhole"),
+    (94.5, "THE SUN", "1 Sun", "sun"), (116.6, "SAGITTARIUS A*", "4.3 million Suns", "galaxy"),
 ]
 
 EARTH_KG, SUN_KG, MOON_KG = 5.97e24, 1.99e30, 7.35e22
@@ -191,6 +191,36 @@ def hud_state(t):
     if act_at(t) == "surface":
         sub = f"SURFACE GRAVITY  {surface_g(t):.1f} g"
     nx, nv = (upcoming[0][1], upcoming[0][2]) if upcoming else ("NOTHING", "it doesn't stop")
+    icon = passed[-1][3] if passed and act_at(t) != "surface" else None
+    icon_a = min(1.0, (h - passed[-1][0]) / 0.25) if passed else 0.0
     day = int(h // 24) + 1
-    return dict(value=fmt_mass(m), sub=sub, next_label=nx, next_value=nv,
+    return dict(value=fmt_mass(m), sub=sub, next_label=nx, next_value=nv, icon=icon, icon_alpha=icon_a,
                 right_value=str(int(h + 0.02)), right_sub=f"DAY {day}  ·  DOUBLING EVERY HOUR")
+
+
+# ======================================================================= RETIME (v2 edit)
+# After review: the cavity and the surface were too slow. The scenes keep their original ("old") timing; this block
+# maps old seconds -> new seconds. Captions in removed beats are dropped, the rest keep a readable length.
+_SEG = [((0, 120), (0, 120)), ((120, 170), (120, 154)), ((170, 245), (154, 229)), ((245, 330), (229, 289)),
+        ((330, 410), (289, 369)), ((410, 495), (369, 460)), ((495, 520), (460, 485))]
+def n(t_old):
+    for (a, b), (c, d) in _SEG:
+        if t_old <= b: return c + (t_old - a) * (d - c) / (b - a)
+    return _SEG[-1][1][1] + (t_old - _SEG[-1][0][1])
+def o(t_new):
+    for (a, b), (c, d) in _SEG:
+        if t_new <= d: return a + (t_new - c) * (b - a) / (d - c)
+    return _SEG[-1][0][1] + (t_new - _SEG[-1][1][1])
+
+ACTS_OLD, EVENTS_OLD, CAPTIONS_OLD, HOUR_KEYS_OLD = ACTS, EVENTS, CAPTIONS, HOUR_KEYS
+_DROP = {"Yours is no longer small.", "Pebbles drift in. Then rocks.", "Nobody knows where you went.",
+         "Stairs feel steeper. Planes need longer runways.", "Standing up is no longer possible."}
+ACTS = [(name, round(n(a), 3), round(n(b), 3)) for name, a, b in ACTS_OLD]
+DURATION = ACTS[-1][2]
+EVENTS = {k: n(v) for k, v in EVENTS_OLD.items()}
+HOUR_KEYS = [(n(t), h) for t, h in HOUR_KEYS_OLD]
+_caps = [(n(a), n(b), x, b - a) for a, b, x in CAPTIONS_OLD if x not in _DROP]
+CAPTIONS = []
+for i, (a, b, x, dur) in enumerate(_caps):
+    nxt = _caps[i + 1][0] - 0.25 if i + 1 < len(_caps) else DURATION
+    CAPTIONS.append((a, min(nxt, max(b, a + min(dur, 3.0))), x))
