@@ -142,16 +142,27 @@ for i in range(6):
     ico(f"hill{i}", 14 + rnd.random() * 8, 0x7aa556, (70 + rnd.random() * 30, -8, -40 + i * 16), sub=2)
 # breakable floor tiles (slab top at FLOOR_Y)
 T = 0.5; tiles = []
+static_bm = bmesh.new(); static_mats = {}
 for ix in range(-9, 9):
     for iz in range(-9, 9):
         x, z = ix * T + T / 2, iz * T + T / 2
         col = 0xc29466 if (ix + iz) % 2 else 0xbb8d5f
-        ob = box(f"tile_{ix}_{iz}", T * 0.995, 0.25, T * 0.995, col, (x, FLOOR_Y - 0.125, z), rough=0.55)
         inside = (-2.6 < x < 0.3) and (-3.3 < z < -0.6)
         edge = inside and (x < -2.3 or x > 0.0 or z < -3.0 or z > -0.9)
         fall = (rnd.random() < .5) if edge else inside
-        tiles.append(dict(ob=ob, x=x, z=z, fall=fall, vx=(rnd.random() - .5) * 1.2, vz=(rnd.random() - .5) * 1.2,
-                          rx=(rnd.random() - .5) * 6, rz=(rnd.random() - .5) * 6, delay=rnd.random() * 0.25))
+        vx, vz, rx, rz, delay = (rnd.random() - .5) * 1.2, (rnd.random() - .5) * 1.2, (rnd.random() - .5) * 6, (rnd.random() - .5) * 6, rnd.random() * 0.25
+        if fall:
+            ob = box(f"tile_{ix}_{iz}", T * 0.995, 0.25, T * 0.995, col, (x, FLOOR_Y - 0.125, z), rough=0.55)
+            tiles.append(dict(ob=ob, x=x, z=z, fall=True, vx=vx, vz=vz, rx=rx, rz=rz, delay=delay))
+        else:
+            mi = static_mats.setdefault(col, len(static_mats))
+            res = bmesh.ops.create_cube(static_bm, size=1.0)
+            bmesh.ops.scale(static_bm, vec=Vector((T * 0.995, T * 0.995, 0.25)), verts=res["verts"])
+            bmesh.ops.translate(static_bm, vec=B(x, FLOOR_Y - 0.125, z), verts=res["verts"])
+            for fc in {f for v in res["verts"] for f in v.link_faces}: fc.material_index = mi
+sme = bpy.data.meshes.new("floor_static"); static_bm.to_mesh(sme); static_bm.free()
+for col in static_mats: sme.materials.append(mat(col, 0.55))
+link(bpy.data.objects.new("floor_static", sme))
 # cracks
 cracks = []
 for i in range(30):
@@ -218,6 +229,13 @@ def make_hand(side):
     limb("thumb", (side * -0.055, 0, -0.05), (side * -0.085, -0.012, -0.12), 0.017, 0.015, SKIN, h, segs=8)
     return h
 hL, hR = make_hand(-1), make_hand(1)
+
+# bake bevel modifiers into plain meshes (faster per-frame scene sync)
+_dg = bpy.context.evaluated_depsgraph_get()
+for ob in list(scene.objects):
+    if ob.type == 'MESH' and ob.modifiers:
+        me = bpy.data.meshes.new_from_object(ob.evaluated_get(_dg))
+        ob.modifiers.clear(); ob.data = me
 
 # ------------------------------------------------------------------ animation (baked per frame)
 POS = [(0, (1.2, 4.52, 0.86)), (9.4, (1.2, 4.52, 0.86)), (10.6, (0.6, 4.6, 0.4)), (11.8, (-0.3, 4.58, -1.4)), (13.0, (-1.05, 4.3, -2.0))]
@@ -338,6 +356,8 @@ scene.view_settings.exposure = 0.35
 if ENGINE == "eevee":
     r.engine = 'BLENDER_EEVEE_NEXT' if 'BLENDER_EEVEE_NEXT' in [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties['engine'].enum_items] else 'BLENDER_EEVEE'
     scene.eevee.taa_render_samples = SAMPLES
+    try: scene.eevee.use_shadows = True
+    except Exception: pass
     try: scene.eevee.use_raytracing = True
     except Exception: pass
 else:
