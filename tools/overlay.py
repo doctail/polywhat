@@ -36,12 +36,28 @@ def spaced(draw, xy, text, f, fill, track, anchor="ls"):
         draw.text((x, y), c, font=f, fill=fill, anchor="ls"); x += wd + track
     return total
 
+import re
+_SUP = re.compile(r"(\^-?\d+)")
+def rich(d, xy, text, f, fill, anchor="ls"):
+    """draw text where '^-16' style tokens become superscripts. anchor: ls / rs / ms (baseline)."""
+    if "^" not in text:
+        d.text(xy, text, font=f, fill=fill, anchor=anchor); return
+    small = ImageFont.truetype(f.path, max(8, int(f.size * 0.58)))
+    parts = [(p[1:], small) if p.startswith("^") else (p, f) for p in _SUP.split(text) if p]
+    widths = [d.textlength(p, font=ff) for p, ff in parts]; total = sum(widths) + sum(f.size * 0.12 for p, ff in parts if ff is small)
+    x, y = xy
+    if anchor[0] == "r": x -= total
+    elif anchor[0] == "m": x -= total / 2
+    for (p, ff), w in zip(parts, widths):
+        dy = -int(f.size * 0.42) if ff is small else 0
+        d.text((x, y + dy), p.replace("-", "\u2212") if ff is small else p, font=ff, fill=fill, anchor="ls"); x += w + (f.size * 0.12 if ff is small else 0)
+
 def shadow_text(base, xy, text, f, fill, anchor, blur, alpha):
     layer = Image.new("RGBA", base.size, (0, 0, 0, 0)); d = ImageDraw.Draw(layer)
-    d.text(xy, text, font=f, fill=(0, 0, 0, int(160 * alpha)), anchor=anchor)
+    rich(d, xy, text, f, (0, 0, 0, int(160 * alpha)), anchor)
     layer = layer.filter(ImageFilter.GaussianBlur(blur))
     base.alpha_composite(layer)
-    ImageDraw.Draw(base).text(xy, text, font=f, fill=fill[:3] + (int(255 * alpha),), anchor=anchor)
+    rich(ImageDraw.Draw(base), xy, text, f, fill[:3] + (int(255 * alpha),), anchor)
 
 def clamp(x, a=0.0, b=1.0): return max(a, min(b, x))
 
@@ -60,12 +76,15 @@ def compose(img, t, TL):
     d.rectangle([L, int(236 * k), L + int(34 * k), int(238 * k)], fill=(255, 190, 90, 230))
     w = spaced(d, (L, int(270 * k)), "NEXT", sans(int(13 * k)), dimmer, 3.0 * k)
     spaced(d, (L + w + 14 * k, int(270 * k)), st["next_label"], sans(int(13 * k)), white, 3.0 * k)
-    d.text((L, int(312 * k)), st["next_value"], font=serif(int(34 * k)), fill=white, anchor="ls")
+    rich(d, (L, int(312 * k)), st["next_value"], serif(int(34 * k)), white, "ls")
     R = W - int(80 * k)
     spaced(d, (R, int(92 * k)), HUD["right_label"], sans(int(15 * k)), white, 3.2 * k, anchor="rs")
     shadow_text(base, (R, int(178 * k)), st["right_value"], serif(int(92 * k)), (255, 255, 255, 255), "rs", 10 * k, 1.0)
     d = ImageDraw.Draw(base)
     spaced(d, (R, int(214 * k)), st.get("right_sub", HUD["right_sub"]), sans(int(14 * k)), dim, 3.0 * k, anchor="rs")
+    if st.get("extra_label"):
+        spaced(d, (R, int(270 * k)), st["extra_label"], sans(int(13 * k)), dimmer, 3.0 * k, anchor="rs")
+        rich(d, (R, int(312 * k)), st["extra_value"], serif(int(34 * k)), white, "rs")
     for a, b, s in TL.CAPTIONS:
         if a <= t <= b:
             al = min(clamp((t - a) / .35), clamp((b - t) / .35))
