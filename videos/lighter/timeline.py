@@ -127,7 +127,7 @@ CAPTIONS = [
     (517.0, 520.5, "One hundred and fifty halvings."),
     (522.0, 525.5, "And you still haven't reached zero."),
     (528.0, 531.5, "You never will."),
-    (533.0, 538.0, "What if you got heavier instead?"),
+    (533.0, 538.0, "What if you shrank instead?"),
 ]
 
 # (hour you cross it, label, its mass)
