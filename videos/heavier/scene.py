@@ -222,31 +222,58 @@ def strata(depth):
     if depth < 30: return [0x8a6a4a, 0x7c5d40, 0x93724f][int(depth / 2) % 3], 0   # clay
     if depth < 38: return [0xb08c62, 0xa5825a][int(depth / 2) % 2], 0              # sandstone
     if depth < 70: return [0x8f7f84, 0x9a8a8e, 0x857579][int(depth / 3) % 3], 0   # granite
-    heat = cl((depth - 70) / 90)
-    return [0x5a3a30, 0x6a3c2e, 0x56342a][int(depth / 3) % 3], 0.15 + 0.9 * heat
+    return [0x4a3a36, 0x3e302c, 0x55413a][int(depth / 3) % 3], 0
 
 def tube(name, y_top, y_bot, step, radius, colfn, sides=14, jitter=0.12):
-    """vertical tube of rings (inner surface visible), one merged mesh, materials by depth band."""
+    """vertical tube of rings (inner surface visible), one merged mesh; faces get 3 shades for a rocky texture."""
     bm = bmesh.new(); mats = {}; me = bpy.data.meshes.new(name)
     y = y_top; rr = random.Random(3)
     while y > y_bot:
-        depth = -y; col, em = colfn(depth); key_ = (col, round(em, 1))
-        mi = mats.setdefault(key_, len(mats))
+        depth = -y; col, em = colfn(depth)
         res = bmesh.ops.create_cone(bm, cap_ends=False, segments=sides, radius1=radius, radius2=radius, depth=step)
         for v in res["verts"]:
-            ang = math.atan2(v.co.y, v.co.x); j = 1 + rr.uniform(-jitter, jitter)
-            v.co.x *= j; v.co.y *= j
+            j = 1 + rr.uniform(-jitter, jitter); v.co.x *= j; v.co.y *= j
         bmesh.ops.translate(bm, vec=Vector((0, 0, y - step / 2)), verts=res["verts"])
-        for fc in {f for v in res["verts"] for f in v.link_faces}: fc.material_index = mi
+        for fc in {f for v in res["verts"] for f in v.link_faces}:
+            shade = rr.choice((0, 0, 1, 2))
+            fc.material_index = mats.setdefault((col, round(em, 1), shade), len(mats))
         y -= step
     bm.to_mesh(me); bm.free()
-    for (col, em), i in sorted(mats.items(), key=lambda kv: kv[1]):
-        me.materials.append(mat(col, 0.95, emit=em, emit_col=0xff6a20) if em > 0 else mat(col, 0.95))
+    for (col, em, shade), i in sorted(mats.items(), key=lambda kv: kv[1]):
+        f = (1.0, 0.72, 1.22)[shade]
+        c = int(min(255, ((col >> 16) & 255) * f)) << 16 | int(min(255, ((col >> 8) & 255) * f)) << 8 | int(min(255, (col & 255) * f))
+        me.materials.append(mat(c, 0.95, emit=em, emit_col=0xff6a20) if em > 0 else mat(c, 0.95))
+    return link(bpy.data.objects.new(name, me))
+
+def veins(name, radius, y_top, y_bot, n, glowfn, width=0.035):
+    """glowing cracks on the inside of a tube: short zig-zag chains of thin emissive bars (one merged mesh)."""
+    rr = random.Random(hash(name) % 997); bm = bmesh.new(); mats = {}; me = bpy.data.meshes.new(name)
+    for _ in range(n):
+        y = rr.uniform(y_bot, y_top); a = rr.random() * math.tau
+        col, st = glowfn(-y)
+        if st <= 0: continue
+        mi = mats.setdefault((col, round(st, 1)), len(mats))
+        px, py = a, y
+        for k in range(rr.randint(3, 6)):
+            da, dy = rr.uniform(-0.25, 0.25) / radius * 2, rr.uniform(-1.2, 0.4) * radius * 0.6
+            nx, ny = px + da, py + dy
+            p0 = Vector((math.cos(px) * radius * 0.97, math.sin(px) * radius * 0.97, py)); p1 = Vector((math.cos(nx) * radius * 0.97, math.sin(nx) * radius * 0.97, ny))
+            L = (p1 - p0).length; w = width * rr.uniform(0.6, 1.4) * (1 - k * 0.12)
+            res = bmesh.ops.create_cube(bm, size=1.0)
+            bmesh.ops.scale(bm, vec=Vector((w, w, L)), verts=res["verts"])
+            q = (p1 - p0).to_track_quat('Z', 'Y')
+            bmesh.ops.rotate(bm, verts=res["verts"], cent=Vector((0, 0, 0)), matrix=q.to_matrix())
+            bmesh.ops.translate(bm, vec=(p0 + p1) / 2, verts=res["verts"])
+            for fc in {f for v in res["verts"] for f in v.link_faces}: fc.material_index = mi
+            px, py = nx, ny
+    bm.to_mesh(me); bm.free()
+    for (col, st), i in sorted(mats.items(), key=lambda kv: kv[1]): me.materials.append(emission_mat(col, st))
     return link(bpy.data.objects.new(name, me))
 
 def act_shaft():
     world((0.02, 0.02, 0.03), 0.2)
     tube("shaft", 2.0, -175, 1.0, 1.0, strata)
+    veins("shaft_veins", 1.0, -72, -175, 520, lambda d: ((0xff7a2a if d < 130 else 0xffb050), 0 if d < 72 else 2.0 + 4.0 * cl((d - 72) / 90)))
     topdisk = ico("topdisk", 1.0, 0, (0, 2.05, 0), sub=2, material=emission_mat(0xfff1d8, 8.0)); topdisk.scale = (1, 1, 0.05)
     toplight = light('SPOT', "toplight", 900, (1.0, 0.95, 0.85), (0, 1.6, 0), (0, -10, 0)); toplight.data.spot_size = math.radians(70)
     heat = light('POINT', "heat", 0, (1.0, 0.55, 0.25), (0, 0, 0), soft=0.6)
@@ -277,7 +304,7 @@ def act_shaft():
             if t <= t1: return a + (b - a) * (t - t0) / (t1 - t0)
         return DEPTH[-1][1]
     LOOKS = [(36, (0.05, 1, 0.1)), (55, (0.1, 1, 0.05)), (57, (1, -0.15, 0.2)), (62.5, (0.6, -0.4, -0.5)), (66, (0.1, 1, 0.1)),
-             (81, (0.1, 1, 0.1)), (83, (0.7, -0.6, 0.3)), (88, (0.2, 0.9, 0.2)), (107, (0.15, 1, 0.1)), (110, (0.9, -0.1, 0.4)), (120, (0.4, 0.1, -0.9))]
+             (81, (0.1, 1, 0.1)), (83.5, (0.3, -0.9, 0.2)), (88.5, (0.2, 0.9, 0.2)), (98, (0.25, -0.9, 0.15)), (104, (0.15, 1, 0.1)), (110, (0.45, -0.7, 0.3)), (120, (0.3, -0.85, -0.35))]
     def frame(t, f):
         d = depth(t); y = -d
         p = Vector((0.0, y, 0.0)) + shake(t, 0.01 + 0.01 * cl((t - 60) / 40), 19)
@@ -330,22 +357,33 @@ def act_cavity():
 
 # ======================================================================= ACT 4: PLUNGE (to the core)
 def plunge_color(s):
-    if s < 0.12: return [0x5a463a, 0x4c3c32][int(s * 300) % 2], 0.25
-    if s < 0.68: return [0x7a2410, 0x9a3016, 0x5a1a0c][int(s * 300) % 3], 0.3 + 0.7 * (s - 0.12)
-    if s < 0.9: return [0xb04a16, 0xc85a1a][int(s * 300) % 2], 1.0
-    return 0xe0a040, 1.4
+    if s < 0.12: return [0x4a3a32, 0x3c2f29][int(s * 300) % 2], 0
+    if s < 0.68: return [0x3a1c14, 0x4a2216, 0x2e1610][int(s * 300) % 3], 0
+    if s < 0.9: return [0x5a2a14, 0x6a3218][int(s * 300) % 2], 0
+    return 0x7a4a20, 0
+
+def plunge_glow(s):
+    if s < 0.12: return 0xff7a2a, 2.0
+    if s < 0.68: return 0xff6a20, 3.5 + 3 * (s - 0.12)
+    if s < 0.9: return 0xffa040, 6.0
+    return 0xffe0a0, 7.0
 
 def act_plunge():
     world((0.0, 0.0, 0.0), 0.0)
     L = 1800.0
-    tube("lava", 2.0, -L, 4.0, 3.0, lambda depth: (plunge_color(depth / L)[0], plunge_color(depth / L)[1]), sides=16, jitter=0.18)
+    tube("lava", 2.0, -L, 4.0, 3.0, lambda depth: plunge_color(depth / L), sides=16, jitter=0.18)
+    veins("lava_veins", 3.0, 0, -L, 2600, lambda d: plunge_glow(d / L), width=0.09)
     streaks = []
     for i in range(160):
         a = rnd.random() * math.tau; y = -rnd.uniform(0, L); col, em = plunge_color(-y / L)
         o = box(f"st{i}", 0.05, 7.0, 0.05, 0, (0, 0, 0), material=emission_mat(0xffd9a0, 2.0 + em))
         o.location = Vector((math.cos(a) * 2.6, math.sin(a) * 2.6, y)); streaks.append(o)
     merge_static("streaks", streaks)
-    coreball = ico("corecav", 45, 0, (0, -L - 40, 0), sub=3, material=emission_mat(0xd08030, 0.9))
+    coreball = ico("corecav", 45, 0, (0, -L - 40, 0), sub=3, material=mat(0x6a3a1c, 0.9))
+    for c, e in ((0x4a2814, 0), (0xffb040, 4.0), (0xffe0a0, 6.0)):
+        coreball.data.materials.append(emission_mat(c, e) if e else mat(c, 0.9))
+    for p_ in coreball.data.polygons: p_.material_index = rnd.choice((0, 0, 0, 1, 1, 1, 2, 2, 3))
+    corel = light('POINT', "corelight", 2.0e5, (1.0, 0.75, 0.45), (0, -L - 40, 0), soft=4)
     for i in range(60): ico(f"blob{i}", rnd.uniform(1.5, 5), 0, (rnd.uniform(-35, 35), -L - 40 + rnd.uniform(-35, 35), rnd.uniform(-35, 35)), sub=1, material=emission_mat([0xffd070, 0xe07a20][i % 2], 1.6))
     glowl = light('POINT', "glow", 600, (1.0, 0.65, 0.35), (0, 0, 0), soft=1.0)
     cam = camera(66); hL, hR = hand(cam, -1, glow=1.5), hand(cam, 1, glow=1.5)
