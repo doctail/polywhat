@@ -237,3 +237,25 @@ def world_sunset(strength=1.0, horizon=(1.0, 0.55, 0.28), mid=(0.85, 0.45, 0.55)
     e = cr.elements.new(0.22); e.color = (*mid, 1)
     nt.links.new(ramp.outputs[0], bg.inputs[0])
     return w
+
+def rock_cave(name, radius, pos, palette, glow=None, sub=4, rough=0.22, seed=1):
+    """inside of an irregular rocky cave: displaced icosphere, rock shades in coherent patches (noise),
+    optional glowing patches (glow=(hexcol, strength, threshold)) instead of random coloured faces."""
+    from mathutils import noise
+    me = bpy.data.meshes.new(name); bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=radius)
+    off = Vector((seed * 13.1, seed * 7.7, seed * 3.3))
+    for v in bm.verts:
+        d = v.co.normalized(); n = noise.fractal(d * 2.2 + off, 0.6, 2.0, 4)
+        v.co = d * radius * (1 + rough * n)
+    for fc in bm.faces:
+        c = fc.calc_center_median().normalized()
+        n = noise.noise(c * 3.0 + off * 2)
+        idx = 0 if n < -0.15 else (1 if n < 0.2 else 2)
+        if glow is not None and noise.noise(c * 1.6 + off * 3) > glow[2]: idx = 3
+        fc.material_index = idx
+    bm.to_mesh(me); bm.free()
+    for c in palette: me.materials.append(mat(c, 0.95))
+    if glow is not None: me.materials.append(emission_mat(glow[0], glow[1]))
+    ob = bpy.data.objects.new(name, me); ob.location = B(*pos)
+    return link(ob)

@@ -257,7 +257,7 @@ def veins(name, radius, y_top, y_bot, n, glowfn, width=0.035):
         for k in range(rr.randint(3, 6)):
             da, dy = rr.uniform(-0.25, 0.25) / radius * 2, rr.uniform(-1.2, 0.4) * radius * 0.6
             nx, ny = px + da, py + dy
-            p0 = Vector((math.cos(px) * radius * 0.97, math.sin(px) * radius * 0.97, py)); p1 = Vector((math.cos(nx) * radius * 0.97, math.sin(nx) * radius * 0.97, ny))
+            p0 = Vector((math.cos(px) * radius * 0.99, math.sin(px) * radius * 0.99, py)); p1 = Vector((math.cos(nx) * radius * 0.99, math.sin(nx) * radius * 0.99, ny))
             L = (p1 - p0).length; w = width * rr.uniform(0.6, 1.4) * (1 - k * 0.12)
             res = bmesh.ops.create_cube(bm, size=1.0)
             bmesh.ops.scale(bm, vec=Vector((w, w, L)), verts=res["verts"])
@@ -273,7 +273,7 @@ def veins(name, radius, y_top, y_bot, n, glowfn, width=0.035):
 def act_shaft():
     world((0.02, 0.02, 0.03), 0.2)
     tube("shaft", 2.0, -175, 1.0, 1.0, strata)
-    veins("shaft_veins", 1.0, -72, -175, 520, lambda d: ((0xff7a2a if d < 130 else 0xffb050), 0 if d < 72 else 2.0 + 4.0 * cl((d - 72) / 90)))
+    veins("shaft_veins", 1.0, -72, -175, 300, lambda d: ((0xff7a2a if d < 130 else 0xffb050), 0 if d < 72 else 2.0 + 4.0 * cl((d - 72) / 90)), width=0.012)
     topdisk = ico("topdisk", 1.0, 0, (0, 2.05, 0), sub=2, material=emission_mat(0xfff1d8, 8.0)); topdisk.scale = (1, 1, 0.05)
     toplight = light('SPOT', "toplight", 900, (1.0, 0.95, 0.85), (0, 1.6, 0), (0, -10, 0)); toplight.data.spot_size = math.radians(70)
     heat = light('POINT', "heat", 0, (1.0, 0.55, 0.25), (0, 0, 0), soft=0.6)
@@ -303,8 +303,8 @@ def act_shaft():
         for (t0, a), (t1, b) in zip(DEPTH, DEPTH[1:]):
             if t <= t1: return a + (b - a) * (t - t0) / (t1 - t0)
         return DEPTH[-1][1]
-    LOOKS = [(36, (0.05, 1, 0.1)), (55, (0.1, 1, 0.05)), (57, (1, -0.15, 0.2)), (62.5, (0.6, -0.4, -0.5)), (66, (0.1, 1, 0.1)),
-             (81, (0.1, 1, 0.1)), (83.5, (0.3, -0.9, 0.2)), (88.5, (0.2, 0.9, 0.2)), (98, (0.25, -0.9, 0.15)), (104, (0.15, 1, 0.1)), (110, (0.45, -0.7, 0.3)), (120, (0.3, -0.85, -0.35))]
+    LOOKS = [(36, (0.05, 1, 0.1)), (55, (0.1, 1, 0.05)), (57, (1, -0.15, 0.2)), (61.5, (0.3, -0.9, 0.2)), (66, (0.1, 1, 0.1)),
+             (74, (0.1, 1, 0.1)), (77.5, (0.25, -0.9, 0.2)), (81, (0.1, 1, 0.1)), (83.5, (0.3, -0.9, 0.2)), (88.5, (0.2, 0.9, 0.2)), (98, (0.25, -0.9, 0.15)), (104, (0.15, 1, 0.1)), (110, (0.45, -0.7, 0.3)), (120, (0.3, -0.85, -0.35))]
     def frame(t, f):
         d = depth(t); y = -d
         p = Vector((0.0, y, 0.0)) + shake(t, 0.01 + 0.01 * cl((t - 60) / 40), 19)
@@ -324,11 +324,9 @@ def act_shaft():
 def act_cavity():
     world((0.01, 0.01, 0.012), 0.1)
     R = 8.0
-    cav = ico("cavity", R, 0x3b2a22, (0, 0, 0), sub=3, material=mat(0x3b2a22, 1.0))
-    for c in (0x4a3428, 0x2e221c, 0x5a2a18): cav.data.materials.append(mat(c, 1.0, emit=0.6 if c == 0x5a2a18 else 0, emit_col=0xff5a1a))
-    for p_ in cav.data.polygons: p_.material_index = rnd.choice((0, 1, 2, 2, 3)) if rnd.random() < 0.9 else 3
-    core = light('POINT', "core", 120, (1.0, 0.6, 0.3), (0.3, -0.4, 0.2), soft=0.3)
-    light('POINT', "fill", 900, (1.0, 0.75, 0.55), (5, 4, -3), soft=1.0); light('POINT', "fill2", 500, (0.5, 0.6, 1.0), (-5, -3, 4), soft=1.0)
+    rock_cave("cavity", R, (0, 0, 0), (0x5a4a40, 0x463830, 0x6e5c4e), glow=(0xff6a28, 1.6, 0.5), rough=0.3, seed=2)
+    core = light('POINT', "core", 140, (1.0, 0.62, 0.32), (0.3, -0.4, 0.2), soft=0.3)
+    light('POINT', "fill", 700, (1.0, 0.8, 0.6), (4, 3, -2.5), soft=1.0); light('POINT', "fill2", 260, (0.55, 0.65, 1.0), (-4, -2.5, 3), soft=1.0)
     cam = camera(70); hL, hR = hand(cam, -1, glow=2.0), hand(cam, 1, glow=2.0)
     rocks = []
     for i in range(170):
@@ -372,19 +370,15 @@ def act_plunge():
     world((0.0, 0.0, 0.0), 0.0)
     L = 1800.0
     tube("lava", 2.0, -L, 4.0, 3.0, lambda depth: plunge_color(depth / L), sides=16, jitter=0.18)
-    veins("lava_veins", 3.0, 0, -L, 2600, lambda d: plunge_glow(d / L), width=0.09)
+    veins("lava_veins", 3.0, 0, -L, 1800, lambda d: plunge_glow(d / L), width=0.04)
     streaks = []
     for i in range(160):
         a = rnd.random() * math.tau; y = -rnd.uniform(0, L); col, em = plunge_color(-y / L)
         o = box(f"st{i}", 0.05, 7.0, 0.05, 0, (0, 0, 0), material=emission_mat(0xffd9a0, 2.0 + em))
         o.location = Vector((math.cos(a) * 2.6, math.sin(a) * 2.6, y)); streaks.append(o)
     merge_static("streaks", streaks)
-    coreball = ico("corecav", 45, 0, (0, -L - 40, 0), sub=3, material=mat(0x6a3a1c, 0.9))
-    for c, e in ((0x4a2814, 0), (0xffb040, 4.0), (0xffe0a0, 6.0)):
-        coreball.data.materials.append(emission_mat(c, e) if e else mat(c, 0.9))
-    for p_ in coreball.data.polygons: p_.material_index = rnd.choice((0, 0, 0, 1, 1, 1, 2, 2, 3))
-    corel = light('POINT', "corelight", 2.0e5, (1.0, 0.75, 0.45), (0, -L - 40, 0), soft=4)
-    for i in range(60): ico(f"blob{i}", rnd.uniform(1.5, 5), 0, (rnd.uniform(-35, 35), -L - 40 + rnd.uniform(-35, 35), rnd.uniform(-35, 35)), sub=1, material=emission_mat([0xffd070, 0xe07a20][i % 2], 1.6))
+    rock_cave("corecav", 45, (0, -L - 40, 0), (0x6a3418, 0x542a14, 0x7e4020), glow=(0xffb050, 3.0, 0.35), rough=0.18, seed=5)
+    corel = light('POINT', "corelight", 7.0e4, (1.0, 0.75, 0.45), (0, -L - 40, 0), soft=4)
     glowl = light('POINT', "glow", 600, (1.0, 0.65, 0.35), (0, 0, 0), soft=1.0)
     cam = camera(66); hL, hR = hand(cam, -1, glow=1.5), hand(cam, 1, glow=1.5)
     Y = [(170, 0), (176, -20), (186, -160), (205, -620), (220, -1150), (229, -1790), (235, -1830), (245, -1840)]
