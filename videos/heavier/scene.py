@@ -424,41 +424,87 @@ def act_plunge():
 
 # ======================================================================= ACT 5: SURFACE (gravity rises)
 def act_surface():
+    """gravity rises: trees fall over, poles topple, the overpass ahead breaks, houses cave in one by one.
+    Destruction is keyed at event times (old timeline) so it reads clearly instead of slowly squashing."""
     world((0.55, 0.72, 0.95), 1.1)
-    sunl = sun(4.5, (30, 25, 20), (0, 0, 0))
+    sun(4.5, (30, 25, 20), (0, 0, 0))
     gp = bpy.data.meshes.new("ground"); bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=600); bm.to_mesh(gp); bm.free()
     go = link(bpy.data.objects.new("ground", gp)); go.data.materials.append(mat(0x79a552, 0.95))
     stat = [box("road", 7, 0.02, 600, 0x4a4c52, (0, 0.01, -250))]
     for i in range(120): stat.append(box(f"dash{i}", 0.15, 0.022, 1.6, 0xf0d060, (0, 0.012, -i * 5)))
     for side in (-1, 1): stat.append(box(f"walk{side}", 2.0, 0.08, 600, 0xb8b4ac, (side * 4.6, 0.04, -250)))
-    houses, trees, poles = [], [], []
-    for i in range(26):
+
+    def fr(t_old): return int(round(TL.n(t_old) * FPS)) + 1
+    def keyat(ob, path, value, t_old):
+        setattr(ob, path, value); ob.keyframe_insert(path, frame=fr(t_old))
+    def hide_until(ob, t_old):
+        for o in [ob] + list(ob.children_recursive):
+            o.hide_render = True; o.keyframe_insert("hide_render", frame=1)
+            o.hide_render = False; o.keyframe_insert("hide_render", frame=fr(t_old))
+
+    rows = 16; t0, t1 = 290.0, 323.0
+    for i in range(rows + 10):
         for side in (-1, 1):
-            z = -6 - i * 11 + rnd.uniform(-1, 1); x = side * rnd.uniform(9, 12); w, d, h = rnd.uniform(6, 8), rnd.uniform(6, 8), rnd.uniform(3, 6.5)
+            z = -6 - i * 11 + rnd.uniform(-1, 1); x = side * rnd.uniform(9, 12); w, d, h = rnd.uniform(6, 8), rnd.uniform(6, 8), rnd.uniform(3.5, 6.5)
+            wall_c = [0xe8dccb, 0xd9c7b0, 0xc9d4dc, 0xf0e2c8][(i + side) % 4]; roof_c = [0xa04a38, 0x5a6470, 0x8a5a3a][i % 3]
             g = empty(f"house{i}{side}", (x, 0, z))
-            box("walls", w, h, d, [0xe8dccb, 0xd9c7b0, 0xc9d4dc, 0xf0e2c8][(i + side) % 4], (0, h / 2, 0), parent=g)
-            roof = empty("roofp", (0, h, 0)); roof.parent = g; roof.location = (0, 0, h)
+            walls = empty("wallsg", (0, 0, 0)); walls.parent = g; walls.location = (0, 0, 0)
+            box("walls", w, h, d, wall_c, (0, h / 2, 0), parent=walls)
+            for k in range(3): box("win", 0.05, 1.0, 1.0, 0x6a90b0, (-side * (w / 2 + 0.02), h * 0.55, -d / 3 + k * d / 3), parent=walls, rough=0.2)
+            roof = empty("roofp", (0, 0, 0)); roof.parent = g; roof.location = (0, 0, h)
             rm = bpy.data.meshes.new("roof"); bm = bmesh.new()
             vs = [bm.verts.new(v) for v in ((-w / 2 - .3, -d / 2 - .3, 0), (w / 2 + .3, -d / 2 - .3, 0), (w / 2 + .3, d / 2 + .3, 0), (-w / 2 - .3, d / 2 + .3, 0), (0, -d / 2 - .3, 2.2), (0, d / 2 + .3, 2.2))]
             for fc in ((0, 1, 4), (3, 5, 2), (0, 4, 5, 3), (1, 2, 5, 4)): bm.faces.new([vs[k] for k in fc])
-            bm.to_mesh(rm); bm.free(); ro = link(bpy.data.objects.new("roof", rm), roof); ro.data.materials.append(mat([0xa04a38, 0x5a6470, 0x8a5a3a][i % 3], 0.8))
-            for k in range(3): box("win", 0.05, 1.0, 1.0, 0x6a90b0, (-side * (w / 2 + 0.02), h * 0.55, -d / 3 + k * d / 3), parent=g, rough=0.2)
-            houses.append(dict(g=g, roof=roof, h=h))
+            bm.to_mesh(rm); bm.free(); ro = link(bpy.data.objects.new("roof", rm), roof); ro.data.materials.append(mat(roof_c, 0.8))
+            if i < rows:
+                tc = t0 + (t1 - t0) * (0.15 + 0.85 * rnd.random()) * (0.5 + 0.5 * i / rows)
+                # roof sags first, then the house caves in and becomes a pile of rubble
+                keyat(roof, "location", Vector((0, 0, h)), tc - 1.2); keyat(roof, "rotation_euler", (0, 0, 0), tc - 1.2)
+                keyat(roof, "location", Vector((0, 0, h * 0.55)), tc + 0.4); keyat(roof, "rotation_euler", (rnd.uniform(-0.25, 0.25), side * 0.2, 0), tc + 0.4)
+                keyat(roof, "location", Vector((0, 0, 0.6)), tc + 0.9)
+                keyat(walls, "scale", (1, 1, 1), tc); keyat(walls, "scale", (1.08, 1.08, 0.18), tc + 0.7)
+                pile = empty("pile", (0, 0, 0)); pile.parent = g; pile.location = (0, 0, 0)
+                for k in range(16):
+                    bw, bh = rnd.uniform(0.8, 2.6), rnd.uniform(0.4, 1.2)
+                    pb = box("rub", bw, bh, rnd.uniform(0.8, 2.4), [wall_c, wall_c, roof_c, 0x9a8f86][k % 4], (rnd.uniform(-w / 2, w / 2), bh / 2 + rnd.uniform(0, 1.0), rnd.uniform(-d / 2, d / 2)), parent=pile)
+                    pb.rotation_euler = (rnd.uniform(-0.6, 0.6), rnd.uniform(-0.6, 0.6), rnd.uniform(0, 3))
+                keyat(pile, "scale", (0.001, 0.001, 0.001), tc + 0.2); keyat(pile, "scale", (1, 1, 1), tc + 0.8)
             for k in range(2):
                 tx, tz, th = side * rnd.uniform(6, 7.5), z + rnd.uniform(-5, 5), rnd.uniform(2.5, 4.5)
                 tg = empty(f"tree{i}{side}{k}", (tx, 0, tz))
                 box("trunk", 0.3, th, 0.3, 0x5a4030, (0, th / 2, 0), parent=tg)
-                ico("crown", rnd.uniform(1.1, 1.8), [0x4f8a3c, 0x5a9440, 0x447a34][k], (0, th + 0.8, 0), parent=tg).location = (0, 0, th + 0.8)
-                trees.append(dict(g=tg, lean=rnd.uniform(-1, 1)))
-        if i % 2 == 0:
+                ico("crown", rnd.uniform(1.1, 1.8), [0x4f8a3c, 0x5a9440, 0x447a34][k], (0, 0, 0), parent=tg).location = (0, 0, th + 0.8)
+                if i < rows:
+                    tb = 286 + 30 * rnd.random() * (0.6 + 0.4 * i / rows)
+                    ang = rnd.uniform(1.2, 1.5) * rnd.choice((-1, 1))
+                    keyat(tg, "rotation_euler", (0, 0, 0), tb - 3.0); keyat(tg, "rotation_euler", (0.12 * ang, 0.12 * ang, 0), tb - 0.4)
+                    keyat(tg, "rotation_euler", (0.05 * ang, ang, 0), tb + 0.5); keyat(tg, "rotation_euler", (0.05 * ang, ang * 0.96, 0), tb + 0.8)
+        if i % 2 == 0 and i < rows + 4:
             pg = empty(f"pole{i}", (5.8, 0, -i * 11)); box("pole", 0.18, 7, 0.18, 0x6a5a4a, (0, 3.5, 0), parent=pg); box("arm", 1.6, 0.12, 0.12, 0x6a5a4a, (0, 6.6, 0), parent=pg)
-            poles.append(pg)
-    # bridge in the distance
-    bridge = empty("bridge", (0, 0, -170)); bL = empty("bL", (0, 0, 0)); bR = empty("bR", (0, 0, 0)); bL.parent = bridge; bR.parent = bridge
-    bL.location = (-12, 0, 6); bR.location = (12, 0, 6)
-    box("deckL", 24, 1.0, 6, 0x8a8f96, (-12, 0, 0), parent=bL); box("deckR", 24, 1.0, 6, 0x8a8f96, (12, 0, 0), parent=bR)
-    for x in (-30, 30): stat.append(box(f"pier{x}", 3, 7, 6, 0x9a9a9a, (x, 3.0, -170)))
-    stat.append(box("river", 120, 0.05, 30, 0x4f7fa8, (0, 0.03, -175), rough=0.15))
+            tp = 289 + rnd.random() * 26
+            keyat(pg, "rotation_euler", (0, 0, 0), tp - 2.5); keyat(pg, "rotation_euler", (0.15, 0, 0), tp); keyat(pg, "rotation_euler", (1.45, 0, 0.2), tp + 0.9)
+    # overpass across the road, straight ahead: snaps in the middle at the 'bridges fail' beat
+    OZ, OH = -30.0, 5.5
+    for x in (-6.8, 6.8): stat.append(box(f"pier{x}", 1.2, OH, 3.2, 0xa0a0a0, (x, OH / 2, OZ)))
+    for sgn in (-1, 1):
+        stat.append(box(f"outer{sgn}", 14, 0.9, 4.0, 0x8e9399, (sgn * 13.8, OH + 0.45, OZ)))
+        stat.append(box(f"rail{sgn}", 14, 0.5, 0.15, 0xc8c8c8, (sgn * 13.8, OH + 1.15, OZ - 1.9)))
+    halves = []
+    for sgn in (-1, 1):
+        piv = empty(f"piv{sgn}", (sgn * 6.8, OH, OZ))
+        box("deck", 6.8, 0.9, 4.0, 0x8e9399, (-sgn * 3.4, 0.45, 0), parent=piv)
+        box("rail", 6.8, 0.5, 0.15, 0xc8c8c8, (-sgn * 3.4, 1.15, -1.9), parent=piv)
+        halves.append((piv, sgn))
+    tbr = 285.0
+    for piv, sgn in halves:
+        keyat(piv, "rotation_euler", (0, 0, 0), tbr - 0.6); keyat(piv, "rotation_euler", (0, sgn * 0.12, 0), tbr)
+        keyat(piv, "rotation_euler", (0, sgn * 0.78, 0), tbr + 0.9)
+    # a parked car whose tyres give out
+    car = empty("car", (2.2, 0, -16))
+    box("cbody", 1.8, 0.7, 4.2, 0xc0392b, (0, 0.75, 0), parent=car, bevel=0.15); box("ccab", 1.6, 0.6, 2.2, 0x9a2c22, (0, 1.35, 0.2), parent=car, bevel=0.15)
+    for wx in (-0.85, 0.85):
+        for wz in (-1.3, 1.3): box("wheel", 0.3, 0.6, 0.6, 0x1a1a1a, (wx, 0.3, wz), parent=car, bevel=0.1)
+    keyat(car, "scale", (1, 1, 1), 280); keyat(car, "scale", (1.05, 1.05, 0.55), 296); keyat(car, "scale", (1.1, 1.1, 0.3), 315)
     plane = empty("plane", (0, 0, 0))
     box("fus", 1.6, 1.6, 14, 0xf2f2f2, (0, 0, 0), parent=plane, bevel=0.5); box("wing", 18, 0.25, 3, 0xdcdcdc, (0, 0, 0), parent=plane)
     box("tail", 0.3, 3, 2, 0xc0392b, (0, 1.6, 6), parent=plane); box("stab", 6, 0.2, 1.6, 0xdcdcdc, (0, 0.3, 6.2), parent=plane)
@@ -470,26 +516,16 @@ def act_surface():
         crush = sm((t - E["crush"]) / 4)
         eye = lerp(eye, 0.12, crush)
         p = Vector((1.5, eye, 2.0)) + shake(t, 0.002 + 0.01 * cl((g - 2) / 6), 17)
-        look = Vector((1.0, eye * 0.85 + 0.6 * (1 - cl((g - 1.5) / 4)), -40))
+        look = Vector((1.0, eye * 0.85 + 0.6 * (1 - cl((g - 1.5) / 4)) + 1.6 * math.sin(cl((t - 283) / 6) * math.pi), -40))
         if E["plane"] - 1 < t < E["plane"] + 9: look = look.lerp(Vector((-10, 30, -60)), math.sin(cl((t - E["plane"] + 1) / 10) * math.pi) * 0.8)
+        if 296 < t < 318:   # glance left and right at the houses caving in
+            look = look.lerp(Vector((-14 if t < 307 else 16, 2.0, -18)), math.sin(cl((t - 296) / 11 if t < 307 else (t - 307) / 11) * math.pi) * 0.7)
         if E["crush"] < t: look = look.lerp(Vector((1.5, -10, -5)), crush)
         cam_key(cam, p, look, f)
         show = g > 2.4
         vis(hL, not show, f); vis(hR, not show, f)
-        for h, s in ((hL, -1), (hR, 1)):
-            h.location = (s * 0.34, -0.26, -0.48); h.rotation_euler = (-0.6, s * -0.3, s * -0.1); key(h, "location", f); key(h, "rotation_euler", f)
-        sq = g ** -0.35
-        for tr in trees:
-            tr["g"].scale = (1, 1, sq); tr["g"].rotation_euler = (0, tr["lean"] * 0.3 * cl((g - 1.5) / 5), 0)
-            key(tr["g"], "scale", f); key(tr["g"], "rotation_euler", f)
-        for hs in houses:
-            rk = cl((g - 1.8) / 2.5); wk = cl((g - 3.0) / 5)
-            hs["roof"].scale = (1, 1, max(0.05, 1 - 0.9 * rk)); hs["roof"].location = (0, 0, hs["h"] * (1 - 0.6 * wk)); hs["g"].scale = (1, 1, max(0.3, 1 - 0.6 * wk))
-            key(hs["roof"], "scale", f); key(hs["roof"], "location", f); key(hs["g"], "scale", f)
-        for pg in poles: pg.rotation_euler = (0.35 * cl((g - 2.0) / 4), 0, 0); key(pg, "rotation_euler", f)
-        bk = sm((t - 285) / 3)
-        bL.rotation_euler = (0, -0.35 * bk, 0); bR.rotation_euler = (0, 0.35 * bk, 0); bL.location = (-12, 0, 6 - 4 * bk); bR.location = (12, 0, 6 - 4 * bk)
-        for ob in (bL, bR): key(ob, "rotation_euler", f); key(ob, "location", f)
+        for h, s_ in ((hL, -1), (hR, 1)):
+            h.location = (s_ * 0.34, -0.26, -0.48); h.rotation_euler = (-0.6, s_ * -0.3, s_ * -0.1); key(h, "location", f); key(h, "rotation_euler", f)
         pt = cl((t - E["plane"]) / 9)
         plane.location = B(lerp(-160, 160, pt), lerp(55, 35, pt), -120); plane.rotation_euler = (0, 0, -math.pi / 2); key(plane, "location", f); key(plane, "rotation_euler", f)
         vis(plane, not (E["plane"] - 0.1 < t < E["plane"] + 9.1), f)
