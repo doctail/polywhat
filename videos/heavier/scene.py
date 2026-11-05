@@ -630,6 +630,17 @@ ACTS = dict(house=act_house, shaft=act_shaft, cavity=act_cavity, plunge=act_plun
             space=act_space, galaxy=lambda: act_galaxy(False), outro=lambda: act_galaxy(True))
 
 frame_fn = ACTS[ACT]()
+if get("--thumb") and ACT == "surface":   # dramatic sunset backlight, only for the thumbnail still
+    world_sunset(0.9, horizon=(1.0, 0.42, 0.12), mid=(0.85, 0.3, 0.38), top=(0.06, 0.1, 0.32))
+    for o in scene.objects:
+        if o.type == 'LIGHT' and o.data.type == 'SUN':
+            o.data.energy = 6.0; o.data.color = (1.0, 0.55, 0.3); o.data.angle = math.radians(1.5)
+            look_rot(o, B(2, 9, -100), B(1, 0, 0))
+        if o.name.startswith("hand"): o.hide_render = True
+        for ch in getattr(o, "children_recursive", []):
+            if o.name.startswith("hand"): ch.hide_render = True
+    ico("sundisc", 9, 0, (2, 13, -300), sub=3, material=emission_mat(0xfff0c0, 12.0))
+    ico("sunhalo", 22, 0, (2, 13, -310), sub=3, material=emission_mat(0xff9a50, 2.5))
 f_lo, f_hi = F0, F1
 if TIMES:
     fr = [int(round(float(x) * FPS)) + 1 for x in TIMES.split(",")]
@@ -638,6 +649,11 @@ elif FRAMES:
     a, b = map(int, FRAMES.split("-")); f_lo, f_hi = max(F0, a), min(F1, b)
 for f in range(f_lo, f_hi + 1):
     frame_fn((f - 1) / FPS, f)
-setup_render(scene, OUT, RES, ENGINE, SAMPLES, DEVICE, FPS, f_lo, f_hi, exposure={"house": 0.35, "surface": 0.2}.get(ACT, 0.0))
+setup_render(scene, OUT, RES, ENGINE, SAMPLES, DEVICE, FPS, f_lo, f_hi, exposure=0.6 if get("--thumb") else {"house": 0.35, "surface": 0.2}.get(ACT, 0.0))
+if get("--thumb"):
+    scene.view_settings.view_transform = 'Standard'; scene.view_settings.look = 'None'; scene.view_settings.exposure = 0.3
+    for o in scene.objects:
+        if o.name.startswith("hand"):
+            for x in [o] + list(o.children_recursive): x.animation_data_clear(); x.hide_render = True
 render(scene, TIMES.split(",") if TIMES else None, FPS)
 print(f"[scene] act {ACT} done", flush=True)

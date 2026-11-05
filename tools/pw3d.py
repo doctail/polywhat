@@ -223,3 +223,17 @@ def render(scene, times=None, fps=30):
             bpy.ops.render.render(write_still=True)
     else:
         bpy.ops.render.render(animation=True)
+
+def world_sunset(strength=1.0, horizon=(1.0, 0.55, 0.28), mid=(0.85, 0.45, 0.55), top=(0.12, 0.2, 0.45)):
+    """gradient sky: warm horizon -> pink -> deep blue."""
+    w = bpy.data.worlds.new("sunset"); bpy.context.scene.world = w; w.use_nodes = True; nt = w.node_tree
+    bg = nt.nodes["Background"]; bg.inputs[1].default_value = strength
+    tc = nt.nodes.new("ShaderNodeTexCoord"); sep = nt.nodes.new("ShaderNodeSeparateXYZ"); ramp = nt.nodes.new("ShaderNodeValToRGB")
+    nt.links.new(tc.outputs["Generated"], sep.inputs[0])
+    mr = nt.nodes.new("ShaderNodeMapRange"); mr.inputs["From Min"].default_value = -0.05; mr.inputs["From Max"].default_value = 0.55
+    nt.links.new(sep.outputs["Z"], mr.inputs["Value"]); nt.links.new(mr.outputs["Result"], ramp.inputs[0])
+    cr = ramp.color_ramp; cr.elements[0].position = 0.0; cr.elements[0].color = (*horizon, 1)
+    cr.elements[1].position = 1.0; cr.elements[1].color = (*top, 1)
+    e = cr.elements.new(0.22); e.color = (*mid, 1)
+    nt.links.new(ramp.outputs[0], bg.inputs[0])
+    return w
