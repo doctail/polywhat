@@ -317,7 +317,7 @@ def kv(sock, v, f):
     sock.default_value = v; sock.keyframe_insert("default_value", frame=f)
 
 R_EARTH = 6.371e6
-def earth_ball(name, R, center, sub=6, seed=4):
+def earth_ball(name, R, center, sub=6, seed=4, cities=False):
     from mathutils import noise
     me = bpy.data.meshes.new(name); bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=R)
     off = Vector((seed * 3.1, seed * 1.7, seed * 2.3))
@@ -327,9 +327,11 @@ def earth_ball(name, R, center, sub=6, seed=4):
         if n < -0.05 and c.z < 0.985: idx = 5              # ocean (home region stays land)
         elif c.z < -0.9: idx = 6
         else: idx = (0, 1, 2, 3, 4)[min(4, max(0, int((n2 + 0.6) * 4)))]
+        if cities and idx < 5 and noise.noise(c * 90 + off) > 0.62: idx = 7
         fc.material_index = idx
     bm.to_mesh(me); bm.free()
     for col in (0x5c8a42, 0x6f9a4a, 0x86a855, 0x9c9a5e, 0xb5a46a, 0x2f5f9a, 0xe9eef2): me.materials.append(mat(col, 0.95))
+    me.materials.append(mat(0x7a8a5a, 0.95, emit=0.5, emit_col=0xffb060))
     ob = link(bpy.data.objects.new(name, me)); ob.location = B(*center); return ob
 
 def cloud(name, pos, size, rr):
@@ -421,7 +423,124 @@ def act_ascent():
             key(mt["o"], "location", f); key(mt["o"], "rotation_quaternion", f); key(mt["o"], "scale", f)
     return frame
 
-ACTS = dict(house=act_house, street=act_street, ascent=act_ascent)
+# ======================================================================= ACT 4: SAIL (pushed out by sunlight)
+def banded_planet(name, R, cols, bands=14, sub=4, jitter=0.0, seed=1):
+    from mathutils import noise
+    me = bpy.data.meshes.new(name); bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=R)
+    off = Vector((seed, seed * 2, seed * 3))
+    for fc in bm.faces:
+        c = fc.calc_center_median().normalized()
+        b = int((c.z + 1) / 2 * bands + jitter * noise.noise(c * 4 + off) * 3)
+        fc.material_index = b % len(cols)
+    bm.to_mesh(me); bm.free()
+    for col in cols: me.materials.append(mat(col, 0.9))
+    return link(bpy.data.objects.new(name, me))
+
+def ring(name, r0, r1, cols, segs=128):
+    me = bpy.data.meshes.new(name); bm = bmesh.new(); n = len(cols)
+    for j in range(n):
+        ra, rb = lerp(r0, r1, j / n), lerp(r0, r1, (j + 1) / n)
+        if cols[j] is None: continue
+        for i in range(segs):
+            a0, a1 = i / segs * math.tau, (i + 1) / segs * math.tau
+            fc = bm.faces.new([bm.verts.new((math.cos(a) * r, math.sin(a) * r, 0)) for a, r in ((a0, ra), (a1, ra), (a1, rb), (a0, rb))]); fc.material_index = j
+    bm.to_mesh(me); bm.free()
+    for col in cols: me.materials.append(mat(col if col is not None else 0, 0.8))
+    return link(bpy.data.objects.new(name, me))
+
+def streaks(n, color=0xdfe8ff, strength=4.0):
+    out = []
+    for i in range(n):
+        o = box(f"spd{i}", 1, 1, 1, 0, (0, 0, 0), material=emission_mat(color, strength)); o.visible_shadow = False
+        out.append(dict(o=o, a=rnd.random() * math.tau, r=rnd.uniform(0.2, 1.0), ph=rnd.random()))
+    return out
+
+def place_streaks(sts, p, F, U, Rv, t, v, f, radius=60.0, L=400.0, thick=0.5):
+    """dust specks streaming past the camera (moving -F at speed v); stretched with speed."""
+    side = F.cross(U).normalized()
+    for q in sts:
+        z = L / 2 - ((q["ph"] * L + t * v) % L)
+        pos = p + F * z + (side * math.cos(q["a"]) + U * math.sin(q["a"])) * q["r"] * radius
+        q["o"].location = B(*pos); q["o"].rotation_quaternion = B(*F).to_track_quat('Z', 'Y'); q["o"].rotation_mode = 'QUATERNION'
+        ln = thick + min(v * 0.05, L * 0.35)
+        q["o"].scale = (thick, thick, ln) if v > 0.01 else (0.001,) * 3
+        key(q["o"], "location", f); key(q["o"], "rotation_quaternion", f); key(q["o"], "scale", f)
+
+def rim_mat(hexcol, strength, power=4.0):
+    """glow only at the silhouette edge (atmosphere / halo): emission * (1 - facing)^power over transparent."""
+    m = bpy.data.materials.new("rim"); m.use_nodes = True; nt = m.node_tree; N, Lk = nt.nodes, nt.links
+    for n in list(N): N.remove(n)
+    out = N.new("ShaderNodeOutputMaterial"); lw = N.new("ShaderNodeLayerWeight"); lw.inputs[0].default_value = 0.5
+    pw = N.new("ShaderNodeMath"); pw.operation = 'POWER'; pw.inputs[1].default_value = power
+    em = N.new("ShaderNodeEmission"); em.inputs[0].default_value = rgb(hexcol); em.inputs[1].default_value = strength
+    tr = N.new("ShaderNodeBsdfTransparent"); mx = N.new("ShaderNodeMixShader")
+    Lk.new(lw.outputs["Facing"], pw.inputs[0]); Lk.new(pw.outputs[0], mx.inputs[0]); Lk.new(tr.outputs[0], mx.inputs[1]); Lk.new(em.outputs[0], mx.inputs[2]); Lk.new(mx.outputs[0], out.inputs[0])
+    try: m.surface_render_method = 'BLENDED'
+    except Exception: pass
+    return m
+
+def act_sail():
+    world((0.0, 0.0, 0.004), 1.0, stars=True)
+    SUN = Vector((0.75, 0.32, -0.58)).normalized(); F = -SUN            # sunlight pushes you straight away from the Sun
+    U = Vector((0, 1, 0)); U = (U - F * U.dot(F)).normalized()
+    sl = sun(5.0, tuple(SUN * 10), (0, 0, 0), color=(1.0, 0.95, 0.88), angle=0.5)
+    fill = sun(0.35, (0, 10, 0), (0, 0, 0), color=(0.6, 0.7, 1.0), angle=5); fill.data.use_shadow = False
+    earth_ball("earth", 6371.0, (0, 0, 0), sub=5, cities=True)
+    atmo = ico("atmo", 6371.0 * 1.012, 0, (0, 0, 0), sub=5, smooth=True, material=rim_mat(0x5a9cff, 3.0)); atmo.visible_shadow = False
+    moon = ico("moon", 1737, 0xbcbcc2, tuple(F * 384400 + F.cross(U).normalized() * 4500 + U * 1200), sub=4)
+    sdisc = ico("sundisc", 1.0, 0, (0, 0, 0), sub=3, material=emission_mat(0xfff4dc, 30.0)); sdisc.visible_shadow = False
+    side = F.cross(U).normalized()
+    planets = []
+    def add_planet(ob, R, te, off_dir, rings=None):
+        ob.visible_shadow = True; planets.append(dict(o=ob, R=R, tc=te + 1.2, off=off_dir.normalized(), rings=rings))
+    mars = banded_planet("mars", 3390, (0xc1592f, 0xb04a26, 0xd0703c, 0x9c4224, 0xe8e0d8), bands=9, jitter=1.0, seed=2); add_planet(mars, 3390, E["mars"], side * 1 + U * 0.3)
+    jup = banded_planet("jupiter", 69911, (0xd9b38c, 0xc08a5a, 0xefe0c4, 0xb07850, 0xe8cfa8, 0xa86a44), bands=17, jitter=0.25, seed=3); add_planet(jup, 69911, E["jupiter"], -side + U * 0.2)
+    sat = banded_planet("saturn", 58232, (0xe6d3a3, 0xd6bf88, 0xf0e2bc, 0xc8ad78), bands=13, jitter=0.2, seed=4)
+    rg = ring("saturn_ring", 74000, 137000, (0xd8c49a, 0xbfae88, None, 0xe2d2ae, 0xcbb890, 0xb6a47e)); rg.parent = sat; rg.rotation_euler = (0.45, 0.2, 0)
+    add_planet(sat, 58232, E["saturn"], side * 1.1 - U * 0.25, rings=rg)
+    nep = banded_planet("neptune", 24622, (0x3a62c4, 0x4a74d6, 0x2f54ae, 0x5a86e0), bands=8, jitter=0.6, seed=5); add_planet(nep, 24622, E["neptune"], -side * 0.9 - U * 0.3)
+    for pl in planets: pl["o"].rotation_euler = (math.radians(70), 0.3, 0)
+    sts = streaks(140)
+    cam = camera(62); cam.data.clip_start = 5.0; cam.data.clip_end = 5.0e7
+    S_KEYS = [(215, 0.0), (222, 150.0), (230, 1500.0), (236, 12000.0), (242, 70000.0), (246, 220000.0), (249, 384400.0), (253, 1.0e6), (260, 3.0e6), (305, 6.0e7)]
+    def s_of(t):
+        for (t0, a), (t1, b) in zip(S_KEYS, S_KEYS[1:]):
+            if t <= t1: k = (t - t0) / (t1 - t0); return math.exp(math.log(max(a, 1.0)) + (math.log(b) - math.log(max(a, 1.0))) * k) if a > 0 else b * k ** 2
+        return S_KEYS[-1][1]
+    home = Vector((0, 6371 + 93, 0))
+    def frame(t, f):
+        p = home + F * s_of(t)
+        # where to look
+        to_earth = (Vector((0, 0, 0)) - p).normalized()
+        d = (to_earth * 0.6 + SUN * 0.7).normalized()                                 # Earth below, Sun up ahead
+        d = d.lerp(to_earth, sm((t - 223) / 4) * 0.8)                                  # watch Earth fall away
+        d = d.lerp((to_earth + U * 0.15).normalized(), sm((t - 236) / 3))
+        moonv = (Vector(moon.location.x for _ in ()) if False else None)
+        if t > 244: d = d.lerp(F, sm((t - 249.5) / 3.0))                                # turn forward, toward the outer planets
+        if 244 < t < 251:   # the Moon slides past
+            mpos = F * 384400 + side * 4500 + U * 1200; d = d.lerp((mpos - p).normalized(), math.sin(cl((t - 244) / 7) * math.pi) * 0.6)
+        if 258 < t < 265: d = d.lerp(-F + U * 0.1, math.sin(cl((t - 258) / 7) * math.pi))   # look back: the Sun, smaller
+        for pl in planets:   # follow each planet as it passes
+            k = (t - (pl["tc"] - 4.0)) / 6.5
+            if 0 < k < 1:
+                rel = F * (pl["R"] * 7.0 * (pl["tc"] - t)) + pl["off"] * pl["R"] * 2.6
+                d = d.lerp((rel).normalized(), math.sin(k * math.pi) * 0.45)
+        d = d.normalized()
+        cam_key(cam, p, p + d * 1000, f, roll=0.02 * math.sin(t * 0.2))
+        # Sun disc behind you, shrinking with distance from the Sun
+        b, au, te = TL.sail_state(TL.hour_at(t)) if TL.hour_at(t) >= 30 else (0, 1.0, 0)
+        dist = 4.0e6; rad = dist * math.tan(math.radians(0.27) / max(au, 1.0)) * 1.6
+        sdisc.location = B(*(p + SUN * dist)); sdisc.scale = (rad,) * 3; key(sdisc, "location", f); key(sdisc, "scale", f)
+        for pl in planets:
+            rel = F * (pl["R"] * 7.0 * (pl["tc"] - t)) + pl["off"] * pl["R"] * 2.6
+            on = -5.0 < t - pl["tc"] < 3.0
+            pl["o"].location = B(*(p + rel)); key(pl["o"], "location", f); vis(pl["o"], not on, f)
+            pl["o"].rotation_euler = (math.radians(70), 0.3, t * 0.2); key(pl["o"], "rotation_euler", f)
+        v = 0.0 if t < 236 else 40.0 + 2600.0 * sm((t - 236) / 69) ** 1.4
+        place_streaks(sts, p, F, U, None, t, v, f, radius=900.0, L=12000.0, thick=3.0)
+    return frame
+
+ACTS = dict(house=act_house, street=act_street, ascent=act_ascent, sail=act_sail)
 
 frame_fn = ACTS[ACT]()
 f_lo, f_hi = F0, F1
@@ -432,6 +551,8 @@ elif FRAMES:
     a, b = map(int, FRAMES.split("-")); f_lo, f_hi = max(F0, a), min(F1, b)
 for f in range(f_lo, f_hi + 1):
     frame_fn((f - 1) / FPS, f)
+try: scene.eevee.shadow_pool_size = '1024'
+except Exception: pass
 setup_render(scene, OUT, RES, ENGINE, SAMPLES, DEVICE, FPS, f_lo, f_hi, exposure={"house": 0.35, "street": 0.2, "ascent": 0.1}.get(ACT, 0.0))
 render(scene, TIMES.split(",") if TIMES else None, FPS)
 print(f"[scene] act {ACT} done", flush=True)
