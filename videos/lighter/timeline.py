@@ -67,7 +67,7 @@ CAPTIONS = [
     (118.0, 121.0, "And then your feet leave the ground."),
     (122.5, 125.0, "Hour ten. You are lighter than air."),
     # ascent
-    (127.0, 130.5, "You float. Slowly. Upward."),
+    (127.0, 130.5, "You float up. And keep going."),
     (133.5, 137.0, "Hour eleven. Eight kilometers. Almost as high as Everest."),
     (140.0, 143.5, "It's far below freezing. You don't feel a thing."),
     (146.5, 150.0, "Hour twelve. Thirteen kilometers. Above the jets."),
@@ -169,6 +169,18 @@ def altitude_km(h):
             k = (math.log(r0) - math.log(rho)) / (math.log(r0) - math.log(r1)); return h0 + k * (h1 - h0)
     return 100.0
 
+# you don't teleport to the float altitude: you rise toward it (lag ~3 s of video), starting from the street
+def _alt_table():
+    tab, a, t = {}, 0.004, 122.5
+    while t <= 216.0:
+        eq = altitude_km(hour_at(t)); a += (eq - a) * min(1.0, (1 / 30) / 2.5) if eq > a else 0
+        tab[round(t * 30)] = a; t += 1 / 30
+    return tab
+_ALT = _alt_table()
+def altitude_vis(t):
+    if t < 122.5: return 0.004
+    return _ALT.get(round(t * 30), _ALT[max(_ALT)])
+
 # ---- light sail flight from hour 30 (relativistic), tabulated per 0.25 h
 def _simulate():
     c, L, AU, A = 2.998e8, 3.828e26, 1.496e11, 0.7
@@ -233,7 +245,7 @@ def hud_state(t):
               right_sub=f"DAY {int(h // 24) + 1}  ·  HALVING EVERY HOUR")
     act = act_at(t)
     if act == "ascent":
-        st["extra_label"], st["extra_value"] = "ALTITUDE", f"{altitude_km(h):,.0f} km"
+        alt = altitude_vis(t); st["extra_label"], st["extra_value"] = "ALTITUDE", (f"{alt * 1000:,.0f} m" if alt < 1 else f"{alt:,.1f} km" if alt < 10 else f"{alt:,.0f} km")
     elif act in ("sail", "interstellar", "deep", "outro") and h >= 30:
         b, au, te = sail_state(h)
         if act == "sail" or h < 78: st["extra_label"], st["extra_value"] = "SPEED", fmt_speed(b)
