@@ -540,7 +540,151 @@ def act_sail():
         place_streaks(sts, p, F, U, None, t, v, f, radius=900.0, L=12000.0, thick=3.0)
     return frame
 
-ACTS = dict(house=act_house, street=act_street, ascent=act_ascent, sail=act_sail)
+# ======================================================================= ACT 5-7: INTERSTELLAR / DEEP / OUTRO (relativistic sky)
+def rel_world():
+    """star sky as seen while moving at speed beta along Blender +Y: aberration crowds the stars ahead, Doppler turns them
+    blue ahead and red/dim behind. The Sun is a glow at rest direction -Y. Keyable: beta, gamma, sunk (sharpness), sunb, ahead."""
+    w = bpy.data.worlds.new("rel"); scene.world = w; w.use_nodes = True; nt = w.node_tree; N, Lk = nt.nodes, nt.links
+    bg = N["Background"]; bg.inputs[1].default_value = 1.0
+    tc = N.new("ShaderNodeTexCoord"); nd = N.new("ShaderNodeVectorMath"); nd.operation = 'NORMALIZE'; Lk.new(tc.outputs["Generated"], nd.inputs[0])
+    sep = N.new("ShaderNodeSeparateXYZ"); Lk.new(nd.outputs[0], sep.inputs[0])
+    def val(v): n = N.new("ShaderNodeValue"); n.outputs[0].default_value = v; return n.outputs[0]
+    def m(op, a, b=None, clamp=False):
+        n = N.new("ShaderNodeMath"); n.operation = op; n.use_clamp = clamp
+        for i, x in enumerate((a, b)):
+            if x is None: continue
+            if isinstance(x, (int, float)): n.inputs[i].default_value = x
+            else: Lk.new(x, n.inputs[i])
+        return n.outputs[0]
+    beta, gamma, sunk, sunb, ahead, starb = val(0.0), val(1.0), val(2000.0), val(1.0), val(0.0), val(1.0)
+    c = sep.outputs["Y"]
+    cr = m('DIVIDE', m('SUBTRACT', c, beta), m('SUBTRACT', 1.0, m('MULTIPLY', beta, c)))
+    sr = m('SQRT', m('MAXIMUM', m('SUBTRACT', 1.0, m('MULTIPLY', cr, cr)), 0.0))
+    comb = N.new("ShaderNodeCombineXYZ"); Lk.new(sep.outputs["X"], comb.inputs[0]); comb.inputs[1].default_value = 0.0; Lk.new(sep.outputs["Z"], comb.inputs[2])
+    npv = N.new("ShaderNodeVectorMath"); npv.operation = 'NORMALIZE'; Lk.new(comb.outputs[0], npv.inputs[0])
+    sp = N.new("ShaderNodeSeparateXYZ"); Lk.new(npv.outputs[0], sp.inputs[0])
+    dr = N.new("ShaderNodeCombineXYZ"); Lk.new(m('MULTIPLY', sp.outputs["X"], sr), dr.inputs[0]); Lk.new(cr, dr.inputs[1]); Lk.new(m('MULTIPLY', sp.outputs["Z"], sr), dr.inputs[2])
+    vor = N.new("ShaderNodeTexVoronoi"); vor.inputs["Scale"].default_value = 300.0; Lk.new(dr.outputs[0], vor.inputs["Vector"])
+    vor2 = N.new("ShaderNodeTexVoronoi"); vor2.inputs["Scale"].default_value = 90.0; Lk.new(dr.outputs[0], vor2.inputs["Vector"])
+    sepc = N.new("ShaderNodeSeparateColor"); Lk.new(vor.outputs["Color"], sepc.inputs[0])
+    mask = m('ADD', m('MULTIPLY', m('LESS_THAN', vor.outputs["Distance"], 0.06), m('ADD', 1.0, m('MULTIPLY', sepc.outputs[0], 4.0))),
+             m('MULTIPLY', m('LESS_THAN', vor2.outputs["Distance"], 0.045), 9.0))
+    # doppler factor and brightness
+    dop = m('DIVIDE', 1.0, m('MULTIPLY', gamma, m('SUBTRACT', 1.0, m('MULTIPLY', beta, c))))
+    bright = m('MINIMUM', m('POWER', dop, 2.2), 60.0)
+    lg = m('ADD', m('MULTIPLY', m('LOGARITHM', m('MAXIMUM', dop, 1e-6), 2.718), 0.16), 0.5)
+    ramp = N.new("ShaderNodeValToRGB"); Lk.new(m('MAXIMUM', m('MINIMUM', lg, 1.0), 0.0), ramp.inputs[0]); cr_ = ramp.color_ramp
+    cr_.elements[0].position = 0.0; cr_.elements[0].color = (0.8, 0.05, 0.0, 1); cr_.elements[1].position = 1.0; cr_.elements[1].color = (0.35, 0.5, 1.0, 1)
+    for pos, col in ((0.3, (1.0, 0.35, 0.1, 1)), (0.5, (1.0, 0.93, 0.82, 1)), (0.68, (0.75, 0.85, 1.0, 1))):
+        e = cr_.elements.new(pos); e.color = col
+    starI = m('MULTIPLY', m('MULTIPLY', mask, bright), starb)
+    # the Sun: glow around rest direction -Y
+    sunI = m('MULTIPLY', m('EXPONENT', m('MULTIPLY', m('ADD', cr, 1.0), m('MULTIPLY', sunk, -1.0))), m('MULTIPLY', sunb, bright))
+    # glow straight ahead at extreme speed (the whole sky piling up in front of you)
+    aheadI = m('MULTIPLY', m('EXPONENT', m('MULTIPLY', m('SUBTRACT', 1.0, c), -160.0)), ahead)
+    def mixadd(a, b, fac):
+        mx = N.new("ShaderNodeMix"); mx.data_type = 'RGBA'; mx.blend_type = 'ADD'; mx.clamp_result = False
+        Lk.new(fac, mx.inputs[0]);
+        if isinstance(a, tuple): mx.inputs[6].default_value = a
+        else: Lk.new(a, mx.inputs[6])
+        Lk.new(b, mx.inputs[7]); return mx.outputs[2]
+    col = mixadd((0.0, 0.0, 0.004, 1), ramp.outputs[0], starI)
+    sunc = N.new("ShaderNodeRGB"); sunc.outputs[0].default_value = (1.0, 0.9, 0.75, 1)
+    sunmix = N.new("ShaderNodeMix"); sunmix.data_type = 'RGBA'; sunmix.blend_type = 'MULTIPLY'; sunmix.inputs[0].default_value = 1.0
+    Lk.new(sunc.outputs[0], sunmix.inputs[6]); Lk.new(ramp.outputs[0], sunmix.inputs[7])
+    col = mixadd(col, sunmix.outputs[2], sunI)
+    blue = N.new("ShaderNodeRGB"); blue.outputs[0].default_value = (0.55, 0.7, 1.0, 1)
+    col = mixadd(col, blue.outputs[0], aheadI)
+    Lk.new(col, bg.inputs[0])
+    return dict(beta=beta, gamma=gamma, sunk=sunk, sunb=sunb, ahead=ahead, starb=starb)
+
+def galaxy_mesh(name, n=12000, R=1000.0):
+    me = bpy.data.meshes.new(name); bm = bmesh.new(); rr = random.Random(11)
+    cols = [(0xcfe0ff, 5.0), (0xfff1d0, 6.0), (0xffd6b0, 4.0), (0xff9ad0, 2.5)]
+    for i in range(n):
+        arm = i % 2; d = rr.random() ** 0.9
+        ang = arm * math.pi + d * 6.0 + rr.gauss(0, 0.32 * (1.2 - d))
+        r = d * R; x, z = math.cos(ang) * r, math.sin(ang) * r; y = rr.gauss(0, 18 * (1 - d) + 4)
+        s_ = rr.uniform(1.0, 3.2) * (1.6 if i % 37 == 0 else 1.0)
+        vs = [bm.verts.new((x + dx, -z + dz, y)) for dx, dz in ((-s_, -s_), (s_, -s_), (s_, s_), (-s_, s_))]
+        fc = bm.faces.new(vs); fc.material_index = 3 if (i % 23 == 0 and d > 0.25) else (0 if d > 0.5 else (1 if i % 3 else 2))
+    for i in range(2200):
+        v = Vector((rr.gauss(0, 1), rr.gauss(0, 1), rr.gauss(0, 0.6))) * 110; s_ = rr.uniform(1.0, 2.6)
+        vs = [bm.verts.new((v.x + dx, v.y + dz, v.z)) for dx, dz in ((-s_, -s_), (s_, -s_), (s_, s_), (-s_, s_))]
+        bm.faces.new(vs).material_index = 1
+    bm.to_mesh(me); bm.free()
+    for c_, e in cols: me.materials.append(emission_mat(c_, e))
+    return link(bpy.data.objects.new(name, me))
+
+def probe(name):
+    g = empty(name)
+    box("bus", 1.8, 0.5, 1.8, 0x8a8a8a, (0, 0, 0), parent=g, rough=0.4)
+    dm = bpy.data.meshes.new("dish"); bm = bmesh.new(); bmesh.ops.create_cone(bm, cap_ends=False, segments=24, radius1=1.85, radius2=0.2, depth=0.7); bm.to_mesh(dm); bm.free()
+    d_ = link(bpy.data.objects.new("dish", dm), g); d_.location = (0, 0, 0.6); d_.data.materials.append(mat(0xf2f2ee, 0.5))
+    limb("boom", (0, 0, 0), (4.5, 0, -0.2), 0.04, 0.04, 0x5a5a5a, g); limb("boom2", (0, 0, 0), (-2.5, 0, -0.6), 0.05, 0.05, 0x5a5a5a, g)
+    box("rtg", 0.5, 0.5, 0.9, 0x3a3a3a, (-2.5, -0.6, 0), parent=g); limb("ant", (0, 0, 0), (0, 0, 7), 0.01, 0.01, 0x9a9a9a, g)
+    return g
+
+def act_space(kind):
+    W = rel_world()
+    sl = sun(3.0, (0, 0, 10), (0, 0, 0), color=(1.0, 0.95, 0.88), angle=0.5)   # light from behind (Sun)
+    fill = sun(0.4, (0, 10, 0), (0, 0, 0), color=(0.6, 0.7, 1.0), angle=5); fill.data.use_shadow = False
+    cam = camera(62); cam.data.clip_start = 0.1; cam.data.clip_end = 1.0e6
+    FWD = Vector((0, 0, -1))   # design forward (= Blender +Y)
+    voy = probe("voyager"); oort = []
+    for i in range(7):
+        o = ico(f"oort{i}", rnd.uniform(1.5, 4.0), [0xd8e2ea, 0xb8c4cc, 0x9aa8b2][i % 3], (0, 0, 0), sub=2)
+        oort.append(dict(o=o, t0=380 + i * 2.3 + rnd.uniform(0, 1), off=Vector((rnd.uniform(-1, 1), rnd.uniform(-0.6, 0.6), 0)).normalized() * rnd.uniform(9, 22)))
+    prox = ico("proxima", 40.0, 0, (0, 0, 0), sub=3, material=emission_mat(0xff6a3a, 6.0)); prox.visible_shadow = False
+    proxh = ico("proxhalo", 75.0, 0, (0, 0, 0), sub=3, smooth=True, material=rim_mat(0xff5020, 3.0, power=3.0)); proxh.visible_shadow = False
+    gal = galaxy_mesh("galaxy"); gal.visible_shadow = False
+    sts = streaks(90, color=0xcfe0ff, strength=3.0)
+    def look(t):
+        d = FWD.copy()
+        def bl(a, b_, tt0, tt1, amt=1.0):
+            return a.lerp(b_, math.sin(cl((t - tt0) / (tt1 - tt0)) * math.pi) * amt)
+        d = bl(d, Vector((0.25, 0.15, 1)), 311, 320)                     # look back: the Sun is a star
+        if 336 < t < 345:
+            vp = voy_pos(t); d = d.lerp(vp.normalized(), math.sin(cl((t - 336) / 9) * math.pi) * 0.85)
+        d = bl(d, Vector((-0.3, 0.1, 1)), 359.5, 368.5)                   # look back: red, fading
+        d = bl(d, Vector((0.5, 0.3, -1)), 374, 386, 0.4)
+        if 425 < t < 434: d = d.lerp((prox_pos(t)).normalized(), math.sin(cl((t - 425) / 9) * math.pi) * 0.7)
+        if t > E["galaxy_exit"]:                                           # turn round: the galaxy, below and behind
+            d = d.lerp(Vector((0.12, -0.55, 1)), sm((t - E["galaxy_exit"]) / 5))
+        return d.normalized()
+    def voy_pos(t):  # Voyager 1 coming up ahead and flashing past
+        k = (t - E["voyager"] - 1.0); return Vector((6, -2.2, 0)) + FWD * (-k * 45)
+    def prox_pos(t):
+        k = (t - E["proxima"] - 0.5); return Vector((-260, 70, 0)) + FWD * (-k * 900)
+    def gal_pos(t):
+        k = sm((t - E["galaxy_exit"] + 6) / (A1 - E["galaxy_exit"] + 6)) if kind != "outro" else 1.0
+        dist = lerp(700, 1500, k) if kind != "outro" else lerp(1500, 3200, sm((t - 515) / 25))
+        return Vector((-260, -dist * 0.5, dist))
+    def frame(t, f):
+        h = TL.hour_at(t); b, au, te = TL.sail_state(h)
+        bv = min(b, 0.9992); g = 1 / math.sqrt(1 - bv * bv)
+        kv(W["beta"], bv, f); kv(W["gamma"], g, f)
+        ang = math.radians(0.27) / max(au, 1)                               # Sun's apparent radius (rest frame)
+        kv(W["sunk"], min(2.0e5, 1.0 / max(ang * ang * 2, 1e-9)), f); kv(W["sunb"], min(200.0, 25.0 * (40.0 / max(au, 40.0)) ** 1.0), f)
+        kv(W["ahead"], 2.0 * sm((h - 75) / 30), f)
+        kv(W["starb"], 1.0 if kind != "outro" else 1 - 0.5 * sm((t - 515) / 20), f)
+        cam_key(cam, Vector((0, 0, 0)), look(t), f, roll=0.02 * math.sin(t * 0.2))
+        vp = voy_pos(t); voy.location = B(*vp); voy.rotation_euler = (0.3, 0.2, t * 0.1); key(voy, "location", f); key(voy, "rotation_euler", f)
+        vis(voy, not (E["voyager"] - 6 < t < E["voyager"] + 4), f)
+        for q in oort:
+            k = t - q["t0"]; pos = q["off"] + FWD * (-k * 120)
+            q["o"].location = B(*pos); key(q["o"], "location", f); vis(q["o"], not (-4 < k < 1.5), f)
+        pp = prox_pos(t)
+        for o in (prox, proxh): o.location = B(*pp); key(o, "location", f); vis(o, not (E["proxima"] - 6 < t < E["proxima"] + 6), f)
+        gp = gal_pos(t); gal.location = B(*gp); gal.rotation_euler = (math.radians(-62), 0.15, -t * 0.003); key(gal, "location", f); key(gal, "rotation_euler", f)
+        vis(gal, t < E["galaxy_exit"] - 1, f)
+        v = 30 + 260 * sm((bv - 0.66) / 0.33) if kind != "outro" else 260
+        if t > E["galaxy_exit"] + 2: v = 0.0
+        place_streaks(sts, Vector((0, 0, 0)), FWD, Vector((0, 1, 0)), None, t, v, f, radius=40.0, L=900.0, thick=0.12)
+    return frame
+
+ACTS = dict(house=act_house, street=act_street, ascent=act_ascent, sail=act_sail,
+            interstellar=lambda: act_space("interstellar"), deep=lambda: act_space("deep"), outro=lambda: act_space("outro"))
 
 frame_fn = ACTS[ACT]()
 f_lo, f_hi = F0, F1
