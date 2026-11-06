@@ -132,11 +132,12 @@ CAPTIONS = [
 
 # (hour you cross it, label, its mass)
 MILESTONES = [
-    (1, "A TEN-YEAR-OLD", "~35 kg"), (4, "A HOUSE CAT", "~4.5 kg"), (6.8, "A BASKETBALL", "~600 g"), (8.7, "A PHONE", "~170 g"),
-    (9.8, "THE AIR YOU DISPLACE", "~80 g"), (16.1, "A PAPERCLIP", "~1 g"), (21.5, "A GRAIN OF RICE", "~25 mg"),
-    (30, "A GRAIN OF SAND", "~65 µg"), (46, "A SPECK OF DUST", "~1 ng"), (55, "A BACTERIUM", "~1 pg"),
-    (66, "A VIRUS", "~10^-18 kg"), (79, "A PROTEIN MOLECULE", "~10^-22 kg"), (95, "A PROTON", "1.7×10^-27 kg"),
-    (106, "AN ELECTRON", "9.1×10^-31 kg"), (126, "A NEUTRINO (UPPER LIMIT)", "<10^-36 kg"),
+    (1, "A TEN-YEAR-OLD", "~35 kg", "child"), (4, "A HOUSE CAT", "~4.5 kg", "cat"), (6.8, "A BASKETBALL", "~600 g", "ball"),
+    (8.7, "A PHONE", "~170 g", "phone"), (9.8, "THE AIR YOU DISPLACE", "~80 g", "balloon"), (16.1, "A PAPERCLIP", "~1 g", "paperclip"),
+    (21.5, "A GRAIN OF RICE", "~25 mg", "rice"), (30, "A GRAIN OF SAND", "~65 µg", "sand"), (46, "A SPECK OF DUST", "~1 ng", "dust"),
+    (55, "A BACTERIUM", "~1 pg", "bacterium"), (66, "A VIRUS", "~10^-18 kg", "virus"), (79, "A PROTEIN MOLECULE", "~10^-22 kg", "protein"),
+    (95, "A PROTON", "1.7×10^-27 kg", "proton"), (106, "AN ELECTRON", "9.1×10^-31 kg", "electron"),
+    (126, "A NEUTRINO (UPPER LIMIT)", "<10^-36 kg", "neutrino"),
 ]
 EQUAL = {1, 95}
 
@@ -210,6 +211,11 @@ def fmt_years(hours):
     if y < 1: mo = round(y * 12); return f"+{mo} month" + ("s" if mo != 1 else "")
     return f"+{y:,.1f} years" if y < 10 else f"+{y:,.0f} years"
 
+# no retime for this video: scene time == video time
+def o(t): return t
+def n(t): return t
+EVENTS_OLD = EVENTS
+
 HUD = dict(label="YOUR MASS", right_label="HOUR", right_sub="HALVING EVERY HOUR")
 
 def hud_state(t):
@@ -221,7 +227,9 @@ def hud_state(t):
     else:
         sub = "A NORMAL ADULT"
     nx, nv = (upcoming[0][1], upcoming[0][2]) if upcoming else ("ZERO", "never")
-    st = dict(value=fmt_mass(m), sub=sub, next_label=nx, next_value=nv, right_value=str(int(h + 0.02)),
+    icon = passed[-1][3] if passed else None
+    icon_a = (1.0 if passed[-1][0] in EQUAL else min(1.0, (h - passed[-1][0]) / 0.25)) if passed else 0.0
+    st = dict(value=fmt_mass(m), sub=sub, icon=icon, icon_alpha=icon_a, next_label=nx, next_value=nv, right_value=str(int(h + 0.02)),
               right_sub=f"DAY {int(h // 24) + 1}  ·  HALVING EVERY HOUR")
     act = act_at(t)
     if act == "ascent":

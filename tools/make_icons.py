@@ -124,6 +124,72 @@ def icons():
                       ship=ship, pyramid=pyramid, gravity=gravity, asteroid=asteroid, moon=moon, earth=earth, blackhole=blackhole,
                       sun=sun, galaxy=galaxy).items():
         D[k] = fn
+    # ---- 'lighter' comparison icons
+    def child(c): person(c, 120, 108, 0.82)
+    def cat(c):
+        ell(c, 112, 92, 52, 26); c.fill(); c.arc(166, 70, 22, 0, 2 * math.pi); c.fill()
+        c.move_to(150, 58); c.line_to(152, 34); c.line_to(166, 50); c.close_path(); c.fill()
+        c.move_to(170, 50); c.line_to(184, 34); c.line_to(186, 60); c.close_path(); c.fill()
+        for x in (76, 96, 128, 146): rrect(c, x - 7, 100, 14, 32, 5); c.fill()
+        c.set_line_width(9); c.move_to(62, 88); c.curve_to(36, 80, 34, 50, 50, 38); c.stroke()
+    def ball(c):
+        c.arc(120, 75, 52, 0, 2 * math.pi); c.fill(); cut(c); c.set_line_width(5)
+        c.move_to(68, 75); c.line_to(172, 75); c.stroke(); c.move_to(120, 23); c.line_to(120, 127); c.stroke()
+        c.arc(54, 75, 40, -0.95, 0.95); c.stroke(); c.arc(186, 75, 40, math.pi - 0.95, math.pi + 0.95); c.stroke(); paint(c)
+    def phone(c):
+        rrect(c, 92, 14, 56, 122, 10); c.fill(); cut(c); rrect(c, 98, 26, 44, 96, 3); c.fill(); paint(c)
+        c.set_source_rgba(1, 1, 1, 0.35); rrect(c, 98, 26, 44, 96, 3); c.fill(); paint(c)
+    def balloon(c):
+        ell(c, 120, 62, 38, 46); c.fill(); c.move_to(112, 106); c.line_to(128, 106); c.line_to(120, 114); c.close_path(); c.fill()
+        c.set_line_width(3); c.move_to(120, 114); c.curve_to(110, 125, 130, 135, 120, 146); c.stroke()
+    def paperclip(c):
+        c.set_line_width(8)
+        c.move_to(150, 40); c.line_to(150, 105); c.arc(130, 105, 20, 0, math.pi); c.line_to(110, 30); c.arc(124, 30, 14, math.pi, 0)
+        c.line_to(138, 100); c.arc(130, 100, 8, 0, math.pi); c.line_to(122, 50); c.stroke()
+    def rice(c):
+        for x, y, a in ((80, 60, 0.4), (150, 62, -0.5), (115, 104, 0.15)):
+            c.save(); c.translate(x, y); c.rotate(a); ell(c, 0, 0, 26, 10); c.fill(); c.restore()
+    def sand(c):
+        rr = random.Random(3)
+        for i in range(7):
+            x, y, r = 70 + i * 17 + rr.uniform(-6, 6), 85 + rr.uniform(-20, 20), rr.uniform(8, 14)
+            c.move_to(x + r, y)
+            for k in range(1, 7): a = k / 6 * 2 * math.pi; rk = r * rr.uniform(0.7, 1.1); c.line_to(x + math.cos(a) * rk, y + math.sin(a) * rk)
+            c.close_path(); c.fill()
+    def dust(c):
+        rr = random.Random(8)
+        for i in range(40): c.arc(120 + rr.gauss(0, 30), 75 + rr.gauss(0, 18), rr.uniform(1.5, 4.5), 0, 2 * math.pi); c.fill()
+    def bacterium(c):
+        rrect(c, 70, 52, 100, 46, 23); c.fill(); c.set_line_width(3)
+        for k in range(5): c.move_to(70, 66 + k * 5); c.curve_to(50, 60 + k * 8, 40, 80 + k * 6, 22, 70 + k * 10); c.stroke()
+    def virus(c):
+        c.arc(120, 75, 34, 0, 2 * math.pi); c.fill(); c.set_line_width(5)
+        for i in range(12):
+            a = i / 12 * 2 * math.pi; c.move_to(120 + math.cos(a) * 34, 75 + math.sin(a) * 34); c.line_to(120 + math.cos(a) * 50, 75 + math.sin(a) * 50); c.stroke()
+            c.arc(120 + math.cos(a) * 53, 75 + math.sin(a) * 53, 6, 0, 2 * math.pi); c.fill()
+    def protein(c):
+        rr = random.Random(2); x, y = 70, 70
+        for i in range(26):
+            c.arc(x, y, 9, 0, 2 * math.pi); c.fill(); x += rr.uniform(-14, 18); y += rr.uniform(-14, 14); x = min(175, max(65, x)); y = min(120, max(30, y))
+    def proton(c):
+        c.arc(120, 75, 44, 0, 2 * math.pi); c.fill(); cut(c)
+        for x, y in ((104, 64), (136, 64), (120, 92)): c.arc(x, y, 13, 0, 2 * math.pi); c.fill()
+        paint(c); c.set_source_rgba(1, 1, 1, 0.45)
+        for x, y in ((104, 64), (136, 64), (120, 92)): c.arc(x, y, 13, 0, 2 * math.pi); c.fill()
+        paint(c)
+    def electron(c):
+        c.set_line_width(4)
+        for a in (0, math.pi / 3, -math.pi / 3):
+            c.save(); c.translate(120, 75); c.rotate(a); ell(c, 0, 0, 66, 22); c.restore(); c.stroke()
+        c.arc(120, 75, 8, 0, 2 * math.pi); c.fill(); c.arc(186, 75, 9, 0, 2 * math.pi); c.fill()
+    def neutrino(c):
+        c.arc(150, 75, 10, 0, 2 * math.pi); c.fill(); c.set_line_width(3)
+        for k, w in ((0, 1.0), (1, 0.6), (2, 0.35)):
+            c.set_source_rgba(1, 1, 1, 0.95 * w); c.move_to(136 - k * 28, 75); c.line_to(110 - k * 28, 75); c.stroke()
+        paint(c)
+    for k, fn in dict(child=child, cat=cat, ball=ball, phone=phone, balloon=balloon, paperclip=paperclip, rice=rice, sand=sand, dust=dust,
+                      bacterium=bacterium, virus=virus, protein=protein, proton=proton, electron=electron, neutrino=neutrino).items():
+        D[k] = fn
     return D
 
 if __name__ == "__main__":
