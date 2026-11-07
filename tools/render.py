@@ -117,7 +117,7 @@ def main():
     jobs = []
     for i, f in enumerate(frames):
         dst = os.path.join(comp, f"{i + 1:05d}.jpg")
-        if not os.path.exists(dst): jobs.append((f, dst, i / TL.FPS, vdir))
+        if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(f): jobs.append((f, dst, i / TL.FPS, vdir))   # redo if the raw frame was re-rendered
     with Pool(max(1, os.cpu_count() - 1)) as p:
         for k, _ in enumerate(p.imap_unordered(_comp, jobs, chunksize=8)):
             if k % 300 == 0: log(f"   {k}/{len(jobs)}")
