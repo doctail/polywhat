@@ -38,8 +38,15 @@ ppl_coll = bpy.data.collections.new('people'); scn.collection.children.link(ppl_
 BVH = [os.path.join(MOC, f) for f in sorted(os.listdir(MOC)) if f.endswith('.bvh')]
 N_IDLE, N_WALK = 22, 8
 crowd = []
+try:
+    import humans; HF = humans.HumanFactory(ppl_coll); print('[people] MPFB humans', flush=True)
+except Exception as e:
+    HF = None; print('[people] MPFB not available, using mannequins:', repr(e)[:200], flush=True)
 for i in range(N_IDLE + N_WALK):
-    P = PP.make_person(BVH[i % len(BVH)], 100 + i, ppl_coll); P['walker'] = i >= N_IDLE
+    walker = i >= N_IDLE
+    if HF: P = HF.make(100 + i, walker_bvh=BVH[i % len(BVH)] if walker else None)
+    else: P = PP.make_person(BVH[i % len(BVH)], 100 + i, ppl_coll)
+    P['walker'] = walker
     crowd.append(P)
 print('people built', flush=True)
 
@@ -105,7 +112,7 @@ for P in crowd:
         if p is not None and all(np.linalg.norm(p - q) > 1.4 for q in spots) and np.linalg.norm(p - CAM) > 9.0 and np.dot(p - CAM, d) > 6: break
         p = None
     if p is None:                                    # no room left on the sidewalk: drop this person
-        for o in [P['root'], P['arm']] + list(P['arm'].children): o.hide_render = True
+        for o in [P['root'], P['arm']] + list(P['arm'].children) + ([P['mesh']] if 'mesh' in P else []): o.hide_render = True
         continue
     spots.append(p)
     root = P['root']; root.location = (p[0], p[1], 0.15)
