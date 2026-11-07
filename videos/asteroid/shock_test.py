@@ -16,7 +16,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--assets', default='/workspace/assets'); ap.add_argument('--out', default='out/shock_test')
 ap.add_argument('--res', default='1920x1080'); ap.add_argument('--samples', type=int, default=48)
 ap.add_argument('--engine', default='cycles'); ap.add_argument('--device', default='gpu')
-ap.add_argument('--frames', default=''); ap.add_argument('--no-dust', action='store_true')
+ap.add_argument('--frames', default=''); ap.add_argument('--no-dust', action='store_true'); ap.add_argument('--no-glass', action='store_true'); ap.add_argument('--cards', action='store_true')
 ap.add_argument('--fps', type=int, default=30); ap.add_argument('--blend', default='')
 ARGS = ap.parse_args(argv)
 os.makedirs(ARGS.out, exist_ok=True)
@@ -115,8 +115,8 @@ print('people placed', flush=True)
 
 # ---------------------------------------------------------------- 4) glass: window shards from street-facing facades
 glass = bpy.data.materials.new('shard'); gb = glass.node_tree.nodes['Principled BSDF']
-gb.inputs['Base Color'].default_value = (0.55, 0.65, 0.7, 1); gb.inputs['Metallic'].default_value = 0.85
-gb.inputs['Roughness'].default_value = 0.06; gb.inputs['Coat Weight'].default_value = 1.0
+gb.inputs['Base Color'].default_value = (0.5, 0.58, 0.62, 1); gb.inputs['Metallic'].default_value = 0.9
+gb.inputs['Roughness'].default_value = 0.12; gb.inputs['Coat Weight'].default_value = 1.0
 # one irregular shard triangle, size 1
 sh_me = bpy.data.meshes.new('shard'); sh_me.from_pydata([(0, 0, 0), (1, 0.15, 0.05), (0.35, 0.9, -0.05)], [], [(0, 1, 2)])
 sh_me.materials.append(glass); shard_obj = bpy.data.objects.new('shard_src', sh_me)
@@ -137,13 +137,13 @@ for pg, h, mh, tags, roof in buildings:
         if abs(np.dot(mid - base, east)) > FW / 2 + 16: continue      # must front 5th Ave
         if np.dot(nrm, base - mid) < 0: continue                      # facing the street
         along = float(np.dot(mid - CAM, d))
-        if along < -60 or along > 230: continue
+        if along < -40 or along > 150: continue
         for s in np.arange(1.5, L - 1, 3.0):
             for z in np.arange(6.0, min(h - 1, 75), 3.6):
                 if random.random() < 0.35: continue                   # not every window goes
                 p0 = a_ + t_ * s
                 ta = arrival(p0)
-                for k in range(random.randint(8, 16)):
+                for k in range(random.randint(10, 18)):
                     q = p0 + t_ * random.uniform(-1.2, 1.2) + nrm * 0.05
                     zz = z + random.uniform(-1.2, 1.2)
                     v = nrm * random.uniform(1.5, 7.0) + t_ * random.uniform(-1.5, 1.5) + w_dir * random.uniform(0.5, 4.0)
@@ -153,7 +153,7 @@ for pg, h, mh, tags, roof in buildings:
                     pts.append((q[0], q[1], zz)); vel.append((v[0], v[1], vz))
                     t0.append(ta + random.uniform(0.0, 0.12)); tl.append(tland)
                     spin.append((random.uniform(-25, 25), random.uniform(-25, 25), random.uniform(-25, 25)))
-                    size.append(random.uniform(0.06, 0.32) * (1.6 if random.random() < 0.15 else 1.0))
+                    size.append(random.uniform(0.05, 0.18) * (2.0 if random.random() < 0.08 else 1.0))
 print('shards', len(pts), flush=True)
 pm = bpy.data.meshes.new('shard_pts'); pm.from_pydata(pts, [], [])
 def attr(name, typ, data, comp):
@@ -203,6 +203,25 @@ Lk(rot.outputs[0], iop.inputs['Rotation'])
 Lk(named('size', 'FLOAT'), iop.inputs['Scale'])
 Lk(iop.outputs[0], go.inputs[0])
 mod = shards.modifiers.new('fall', 'NODES'); mod.node_group = ng
+if ARGS.no_glass: shards.hide_render = True
+
+broken = None
+for m in list(G['FAC'].values()) + [G['M_STORE'], G['ESB_MAT']]:
+    nt_ = m.node_tree; bsd = nt_.nodes['Principled BSDF']
+    if not bsd.inputs['Metallic'].links or not bsd.inputs['Base Color'].links: continue
+    if broken is None:
+        broken = {}
+    vb = nt_.nodes.new('ShaderNodeValue'); vb.outputs[0].default_value = 0.0
+    vb.outputs[0].keyframe_insert('default_value', frame=int((T_SHOCK + 0.05) * FPS))
+    vb.outputs[0].default_value = 0.85; vb.outputs[0].keyframe_insert('default_value', frame=int((T_SHOCK + 0.5) * FPS))
+    met = bsd.inputs['Metallic'].links[0].from_socket; col = bsd.inputs['Base Color'].links[0].from_socket
+    mm = nt_.nodes.new('ShaderNodeMath'); mm.operation = 'MULTIPLY'; nt_.links.new(met, mm.inputs[0]); nt_.links.new(vb.outputs[0], mm.inputs[1])
+    mx_ = nt_.nodes.new('ShaderNodeMix'); mx_.data_type = 'RGBA'; nt_.links.new(mm.outputs[0], mx_.inputs[0])
+    nt_.links.new(col, mx_.inputs[6]); mx_.inputs[7].default_value = (0.012, 0.012, 0.014, 1)
+    nt_.links.new(mx_.outputs[2], bsd.inputs['Base Color'])
+    inv = nt_.nodes.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0; nt_.links.new(vb.outputs[0], inv.inputs[1])
+    mm2 = nt_.nodes.new('ShaderNodeMath'); mm2.operation = 'MULTIPLY'; nt_.links.new(met, mm2.inputs[0]); nt_.links.new(inv.outputs[0], mm2.inputs[1])
+    nt_.links.new(mm2.outputs[0], bsd.inputs['Metallic'])
 
 # ---------------------------------------------------------------- 5) trees whip, car hazard lights, camera
 for o in scn.collection.objects:
@@ -240,48 +259,64 @@ tb.inputs['Emission Color'].default_value = (1, 0.97, 0.92, 1); tb.inputs['Emiss
 ntm = tm.node_tree; lw = ntm.nodes.new('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.35
 trn = ntm.nodes.new('ShaderNodeBsdfTransparent'); ms = ntm.nodes.new('ShaderNodeMixShader')
 pw = ntm.nodes.new('ShaderNodeMath'); pw.operation = 'POWER'; pw.inputs[1].default_value = 0.6
-ntm.links.new(lw.outputs['Facing'], pw.inputs[0]); ntm.links.new(pw.outputs[0], ms.inputs[0])
+ntm.links.new(lw.outputs['Facing'], pw.inputs[0])
+ad = ntm.nodes.new('ShaderNodeMath'); ad.operation = 'ADD'; ad.use_clamp = True; ad.inputs[1].default_value = 0.45
+ntm.links.new(pw.outputs[0], ad.inputs[0]); ntm.links.new(ad.outputs[0], ms.inputs[0])
 ntm.links.new(tb.outputs[0], ms.inputs[1]); ntm.links.new(trn.outputs[0], ms.inputs[2])
 ntm.links.new(ms.outputs[0], ntm.nodes['Material Output'].inputs['Surface'])
 tb.inputs['Alpha'].default_value = 1.0
 cu.materials.append(tm)
 
 # dust: kicked up behind the wave front, rolling north along the avenue
-if not ARGS.no_dust:
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0)); dust = bpy.context.object; dust.name = 'dust'
-    c0 = base + d * 90
-    dust.location = (c0[0], c0[1], 9); dust.scale = (FW + 14, 300, 18)
-    dust.rotation_euler = (0, 0, math.atan2(d[1], d[0]) - math.pi / 2)
-    dm = bpy.data.materials.new('dust'); dust.data.materials.append(dm)
+# camera object (animated further down)
+cam_data = bpy.data.cameras.new('cam'); cam = bpy.data.objects.new('cam', cam_data); scn.collection.objects.link(cam); scn.camera = cam
+if ARGS.cards:
+    dm = bpy.data.materials.new('dustcard')
+    try: dm.surface_render_method = 'DITHERED'
+    except Exception: pass
     nt = dm.node_tree; Nn = nt.nodes; Ll = nt.links.new
-    Nn.remove(Nn['Principled BSDF']); out = Nn['Material Output']
-    pv = Nn.new('ShaderNodeVolumePrincipled'); pv.inputs['Color'].default_value = (0.62, 0.58, 0.52, 1); pv.inputs['Anisotropy'].default_value = 0.3
-    Ll(pv.outputs[0], out.inputs['Volume'])
-    geo = Nn.new('ShaderNodeNewGeometry'); tval = Nn.new('ShaderNodeValue')
-    tval.outputs[0].default_value = 0.0; tval.outputs[0].keyframe_insert('default_value', frame=1)
-    tval.outputs[0].default_value = NF / FPS; tval.outputs[0].keyframe_insert('default_value', frame=NF + 1)
-    def sm(op, a, b, clamp=False):
-        m = Nn.new('ShaderNodeMath'); m.operation = op; m.use_clamp = clamp
-        for i, v in enumerate([a, b]):
-            if isinstance(v, (int, float)): m.inputs[i].default_value = v
-            else: Ll(v, m.inputs[i])
-        return m.outputs[0]
-    dp = Nn.new('ShaderNodeVectorMath'); dp.operation = 'DOT_PRODUCT'
-    Ll(geo.outputs['Position'], dp.inputs[0]); dp.inputs[1].default_value = (float(w_dir[0]) / C_SOUND, float(w_dir[1]) / C_SOUND, 0)
-    arr = sm('ADD', dp.outputs['Value'], T_SHOCK - float(np.dot(CAM, w_dir)) / C_SOUND)
-    since = sm('SUBTRACT', tval.outputs[0], arr)
-    grow = sm('MULTIPLY', since, 0.45, clamp=True)
-    sep = Nn.new('ShaderNodeSeparateXYZ'); Ll(geo.outputs['Position'], sep.inputs[0])
-    hfall = sm('SUBTRACT', 1.0, sm('MULTIPLY', sep.outputs['Z'], sm('DIVIDE', 1.0, sm('ADD', 1.5, sm('MULTIPLY', since, 1.2)))), clamp=True)
-    noi = Nn.new('ShaderNodeTexNoise'); noi.noise_dimensions = '4D'; noi.inputs['Scale'].default_value = 0.05
-    noi.inputs['Detail'].default_value = 6; noi.inputs['Roughness'].default_value = 0.6
-    Ll(geo.outputs['Position'], noi.inputs['Vector']); Ll(sm('MULTIPLY', tval.outputs[0], 0.25), noi.inputs['W'])
-    nz = sm('MULTIPLY', sm('SUBTRACT', noi.outputs['Fac'], 0.38, clamp=True), 2.4)
-    dens = sm('MULTIPLY', sm('MULTIPLY', sm('MULTIPLY', grow, hfall), nz), 0.05)
-    Ll(dens, pv.inputs['Density'])
+    bs = Nn['Principled BSDF']; bs.inputs['Base Color'].default_value = (0.6, 0.56, 0.5, 1); bs.inputs['Roughness'].default_value = 1.0
+    tc = Nn.new('ShaderNodeTexCoord'); oi_ = Nn.new('ShaderNodeObjectInfo')
+    nz = Nn.new('ShaderNodeTexNoise'); nz.noise_dimensions = '4D'; nz.inputs['Scale'].default_value = 2.2
+    nz.inputs['Detail'].default_value = 8; nz.inputs['Roughness'].default_value = 0.62
+    Ll(tc.outputs['Generated'], nz.inputs['Vector'])
+    wm_ = Nn.new('ShaderNodeMath'); wm_.operation = 'MULTIPLY'; wm_.inputs[1].default_value = 37.0
+    Ll(oi_.outputs['Random'], wm_.inputs[0]); Ll(wm_.outputs[0], nz.inputs['W'])
+    nr = Nn.new('ShaderNodeMapRange'); nr.inputs['From Min'].default_value = 0.42; nr.inputs['From Max'].default_value = 0.72
+    Ll(nz.outputs['Fac'], nr.inputs['Value'])
+    sub = Nn.new('ShaderNodeVectorMath'); sub.operation = 'SUBTRACT'; sub.inputs[1].default_value = (0.5, 0.5, 0.5)
+    Ll(tc.outputs['Generated'], sub.inputs[0])
+    ln = Nn.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'; Ll(sub.outputs[0], ln.inputs[0])
+    rr = Nn.new('ShaderNodeMapRange'); rr.inputs['From Min'].default_value = 0.5; rr.inputs['From Max'].default_value = 0.1
+    rr.interpolation_type = 'SMOOTHSTEP'; Ll(ln.outputs['Value'], rr.inputs['Value'])
+    m1 = Nn.new('ShaderNodeMath'); m1.operation = 'MULTIPLY'; Ll(nr.outputs['Result'], m1.inputs[0]); Ll(rr.outputs['Result'], m1.inputs[1])
+    m2 = Nn.new('ShaderNodeMath'); m2.operation = 'MULTIPLY'; Ll(m1.outputs[0], m2.inputs[0]); Ll(oi_.outputs['Alpha'], m2.inputs[1])
+    Ll(m2.outputs[0], bs.inputs['Alpha'])
+    pme = bpy.data.meshes.new('card'); pme.from_pydata([(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)], [], [(0, 1, 2, 3)])
+    pme.uv_layers.new(); pme.materials.append(dm)
+    cards = []
+    def card(p, z, t_on, s0, s1, a_max, rise, drift, near=False):
+        o = bpy.data.objects.new('dust', pme); scn.collection.objects.link(o); cards.append(o)
+        con = o.constraints.new('DAMPED_TRACK'); con.target = cam; con.track_axis = 'TRACK_Z'
+        f_on = t_on * FPS
+        for df, sc_, al, up, dr in [(-1, s0 * 0.3, 0.0, 0, 0), (3, s0, a_max, 0.3, 0.25), (20, (s0 + s1) / 2, a_max * 0.95, 0.6, 0.65),
+                                    (60, s1 * 0.85, a_max * 0.8, 0.85, 0.9), (200, s1, a_max * 0.6, 1.0, 1.0)]:
+            o.scale = (sc_, sc_, sc_); o.color = (1, 1, 1, al)
+            q = p + w_dir * drift * dr
+            o.location = (q[0], q[1], z + rise * up)
+            for path in ('scale', 'color', 'location'): o.keyframe_insert(path, frame=f_on + df)
+    rnd = random.Random(5)
+    for i in range(90):
+        along = rnd.uniform(8, 320); lat = rnd.uniform(-(FW / 2 + 4), FW / 2 + 4)
+        p = base + d * along + east * lat
+        card(p, rnd.uniform(0.6, 5), arrival(p) + rnd.uniform(0.0, 0.25), rnd.uniform(5, 10), rnd.uniform(14, 30),
+             rnd.uniform(0.35, 0.7), rnd.uniform(4, 14), rnd.uniform(6, 22))
+    for i in range(10):                                   # a few close to the lens, rushing past
+        p = CAM + d * rnd.uniform(4, 14) + east * rnd.uniform(-9, 2)
+        card(p, rnd.uniform(0.8, 2.5), arrival(p) + rnd.uniform(0.05, 0.3), 3, rnd.uniform(9, 14), rnd.uniform(0.25, 0.45), 3, rnd.uniform(8, 16))
+    print('dust cards', len(cards), flush=True)
 
 # camera: slow push, shake at the wave
-cam_data = bpy.data.cameras.new('cam'); cam = bpy.data.objects.new('cam', cam_data); scn.collection.objects.link(cam); scn.camera = cam
 cam_data.lens = 20; cam_data.sensor_width = 36; cam_data.clip_end = 30000
 look_t = base + d * 70 - east * 30
 rng = np.random.default_rng(3)
@@ -310,8 +345,8 @@ scn.render.image_settings.file_format = 'PNG'
 scn.view_settings.view_transform = 'AgX'; scn.view_settings.look = 'AgX - Base Contrast'; scn.view_settings.exposure = 0.6
 scn.render.use_motion_blur = True; scn.render.motion_blur_shutter = 0.5
 if ARGS.engine == 'cycles':
-    scn.render.engine = 'CYCLES'; scn.cycles.samples = ARGS.samples; scn.cycles.use_denoising = True
-    scn.cycles.max_bounces = 4; scn.cycles.glossy_bounces = 3; scn.cycles.diffuse_bounces = 2; scn.cycles.volume_bounces = 0
+    scn.render.engine = 'CYCLES'; scn.cycles.samples = ARGS.samples; scn.cycles.use_denoising = True; scn.cycles.denoising_input_passes = 'RGB'; scn.cycles.denoising_prefilter = 'NONE'
+    scn.cycles.transparent_max_bounces = 64; scn.cycles.max_bounces = 4; scn.cycles.glossy_bounces = 3; scn.cycles.diffuse_bounces = 2; scn.cycles.volume_bounces = 0
     scn.cycles.caustics_reflective = False; scn.cycles.caustics_refractive = False
     scn.cycles.volume_step_rate = 4.0
     if ARGS.device == 'gpu':
@@ -329,16 +364,43 @@ else:
     except Exception: pass
     G['wn']['Background'].inputs['Strength'].default_value = 0.7
     scn.eevee.volumetric_end = 400; scn.eevee.volumetric_tile_size = '4'
-# haze (mist pass -> horizon colour)
+# haze + DUST, both in the compositor (no sampling noise, ~free): depth from the mist pass.
+# dust at a pixel starts when the wave reaches that depth:  since = (t - T) + depth / c ;  depth = 40 + mist * 2460
 bpy.context.view_layer.use_pass_mist = True
 G['world'].mist_settings.start = 40; G['world'].mist_settings.depth = 2500; G['world'].mist_settings.falloff = 'LINEAR'
 tr = bpy.data.node_groups.new('comp', 'CompositorNodeTree'); scn.compositing_node_group = tr
 tr.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
-rl = tr.nodes.new('CompositorNodeRLayers'); outn = tr.nodes.new('NodeGroupOutput')
-mul = tr.nodes.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'; mul.inputs[1].default_value = 0.3
-mx = tr.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.inputs[7].default_value = (0.62, 0.68, 0.78, 1)
-tr.links.new(rl.outputs['Mist'], mul.inputs[0]); tr.links.new(mul.outputs[0], mx.inputs[0])
-tr.links.new(rl.outputs['Image'], mx.inputs[6]); tr.links.new(mx.outputs[2], outn.inputs[0])
+TN = tr.nodes; TL_ = tr.links.new
+rl = TN.new('CompositorNodeRLayers'); outn = TN.new('NodeGroupOutput')
+def cm(op, a, b=None, clamp=False):
+    m = TN.new('ShaderNodeMath'); m.operation = op; m.use_clamp = clamp
+    for i, v in enumerate([a, b]):
+        if v is None: continue
+        if isinstance(v, (int, float)): m.inputs[i].default_value = v
+        else: TL_(v, m.inputs[i])
+    return m
+mist = rl.outputs['Mist']
+haze = cm('MULTIPLY', mist, 0.3)
+SINCE = cm('ADD', cm('MULTIPLY', mist, 2460.0 / C_SOUND).outputs[0], 40.0 / C_SOUND)       # input[1] of the next node set per frame
+since = cm('ADD', SINCE.outputs[0], 0.0); T_IN = since                                   # since = depth/c + (t - T)
+grow = cm('MULTIPLY', since.outputs[0], 0.9, clamp=True)
+ic = TN.new('CompositorNodeImageCoordinates')
+img_in = rl.outputs['Image']; TL_(img_in, ic.inputs[0])
+DRIFT = TN.new('ShaderNodeVectorMath'); DRIFT.operation = 'ADD'; TL_(ic.outputs['Uniform'], DRIFT.inputs[0])
+nz = TN.new('ShaderNodeTexNoise'); nz.noise_dimensions = '4D'; nz.inputs['Scale'].default_value = 2.6
+nz.inputs['Detail'].default_value = 7; nz.inputs['Roughness'].default_value = 0.6
+TL_(DRIFT.outputs[0], nz.inputs['Vector'])
+nr = TN.new('ShaderNodeMapRange'); nr.inputs['From Min'].default_value = 0.22; nr.inputs['From Max'].default_value = 0.62
+TL_(nz.outputs['Fac'], nr.inputs['Value'])
+sep = TN.new('ShaderNodeSeparateXYZ'); TL_(ic.outputs['Normalized'], sep.inputs[0])
+ylow = cm('SUBTRACT', 1.5, cm('MULTIPLY', sep.outputs['Y'], 1.0).outputs[0], clamp=True)   # thicker near the ground
+dist = cm('MULTIPLY', cm('POWER', mist, 0.25).outputs[0], 1.6, clamp=True)                  # nothing right on the lens
+dust = cm('MULTIPLY', cm('MULTIPLY', grow.outputs[0], nr.outputs['Result']).outputs[0], cm('MULTIPLY', ylow.outputs[0], dist.outputs[0]).outputs[0])
+DUST_GAIN = cm('MULTIPLY', dust.outputs[0], 0.0)                                            # gain set per frame
+fac = cm('ADD', haze.outputs[0], DUST_GAIN.outputs[0], clamp=True)
+mx = TN.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+TL_(fac.outputs[0], mx.inputs[0]); TL_(img_in, mx.inputs[6]); mx.inputs[7].default_value = (0.62, 0.66, 0.72, 1)
+TL_(mx.outputs[2], outn.inputs[0])
 
 if ARGS.blend: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(ARGS.blend))
 if ARGS.frames:
@@ -349,6 +411,14 @@ import time
 for f in frames:
     path = os.path.join(os.path.abspath(ARGS.out), f'frame_{f:04d}.png')
     if os.path.exists(path): continue
+    t = f / FPS
+    T_IN.inputs[1].default_value = t - T_SHOCK
+    k = 0.0 if t < T_SHOCK - 1.6 else min(1.0, (t - T_SHOCK + 1.6) / 1.6)          # the wall shows up 1.6 s before it hits
+    DUST_GAIN.inputs[1].default_value = 0.0 if ARGS.no_dust else 1.15 * k
+    DRIFT.inputs[1].default_value = (-0.35 * max(0, t - T_SHOCK), 0.12 * max(0, t - T_SHOCK), 0)   # rolls across the frame
+    nz.inputs['W'].default_value = 0.35 * t
+    dk = 0.0 if t < T_SHOCK else min(1.0, (t - T_SHOCK) / 1.5)
+    mx.inputs[7].default_value = tuple(a * (1 - dk) + b * dk for a, b in zip((0.62, 0.66, 0.72), (0.68, 0.63, 0.56))) + (1,)
     t1 = time.time(); scn.frame_set(f); scn.render.filepath = path
     bpy.ops.render.render(write_still=True)
     print(f'[shock] frame {f}/{NF} {time.time() - t1:.1f}s', flush=True)
