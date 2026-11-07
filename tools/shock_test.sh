@@ -11,11 +11,12 @@ BL=/workspace/blender/blender
 PY=$(ls -d /workspace/blender/*/python/bin/python3.[0-9]* | head -1)
 "$PY" -c "import shapely, mapbox_earcut" 2>/dev/null || { "$PY" -m ensurepip -q || true; "$PY" -m pip install -q shapely mapbox_earcut; }
 python3 "$ROOT/tools/city/fetch_assets.py" /workspace/assets
+python3 "$ROOT/tools/city/fetch_cars.py" /workspace/assets   # needs BLENDERKIT_API_KEY, else procedural cars
 OUT=/workspace/polywhat-out/shock_test
 mkdir -p "$OUT/raw"
 START=$(date +%s)
 "$BL" -b --factory-startup -P "$ROOT/videos/asteroid/shock_test.py" -- --assets /workspace/assets --out "$OUT/raw" \
       --res "${RES:-1280x720}" --samples "${SAMPLES:-64}" --engine "${ENGINE:-cycles}" --device gpu "$@" 2>&1 \
-      | grep --line-buffered -E "^\[shock\]|people|city built|shards|Error|Traceback|File \"" || true
+      | grep --line-buffered -E "^\[shock\]|^\[cars\]|people|city built|shards|Error|Traceback|File \"" || true
 echo "[shock] render time: $(( ($(date +%s) - START) / 60 )) min"
 python3 "$ROOT/videos/asteroid/shock_test_post.py" "$OUT"
