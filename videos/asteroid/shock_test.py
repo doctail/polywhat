@@ -17,7 +17,7 @@ ap.add_argument('--assets', default='/workspace/assets'); ap.add_argument('--out
 ap.add_argument('--res', default='1920x1080'); ap.add_argument('--samples', type=int, default=48)
 ap.add_argument('--engine', default='cycles'); ap.add_argument('--device', default='gpu')
 ap.add_argument('--frames', default=''); ap.add_argument('--no-dust', action='store_true'); ap.add_argument('--no-glass', action='store_true'); ap.add_argument('--cards', action='store_true')
-ap.add_argument('--fps', type=int, default=30); ap.add_argument('--blend', default='')
+ap.add_argument('--fps', type=int, default=30); ap.add_argument('--city', default='chicago'); ap.add_argument('--blend', default='')
 ARGS = ap.parse_args(argv)
 os.makedirs(ARGS.out, exist_ok=True)
 
@@ -46,15 +46,36 @@ print('people built', flush=True)
 # ---------------------------------------------------------------- 2) the city
 class NS: pass
 A = NS(); A.tex = os.path.join(ARGS.assets, 'tex'); A.models = os.path.join(ARGS.assets, 'models')
-A.osm = os.path.join(ROOT, 'tools', 'city', 'data', 'osm_midtown.json'); A.city_dir = os.path.join(ROOT, 'tools', 'city'); A.pos = 1000.0; A.engine = ARGS.engine
+A.city_dir = os.path.join(ROOT, 'tools', 'city'); A.engine = ARGS.engine; A.city = ARGS.city
+CITIES = {
+    # 5th Ave between 38th and 39th St, looking south to the Empire State
+    'nyc': dict(osm='osm_midtown.json', lat0=40.7515, lon0=-73.9840, area=(-860, -800, 780, 820), street=['5th Avenue'],
+                look=(-0.5, -0.87), pos=1000.0, default_h=[14, 18, 22, 26, 30], landmark=(-211, -333, 70)),
+    # State Street between Monroe and Adams, looking south down the Loop
+    'chicago': dict(osm='osm_chicago.json', lat0=41.8815, lon0=-87.6300, area=(-820, -820, 820, 820),
+                    street=['South State Street'], look=(0, -1), pos=100.0, default_h=[30, 45, 60, 80, 110]),
+}
+for k, v in CITIES[ARGS.city].items(): setattr(A, k, v)
+A.osm = os.path.join(ROOT, 'tools', 'city', 'data', A.osm)
 G = dict(A=A, __name__='city')
 CITY = os.path.join(ROOT, 'tools', 'city', 'city.py')
 exec(compile(open(CITY).read(), CITY, 'exec'), G)
 base, d, n, FW = G['base'], G['d'], G['n'], G['FW']
 side_poly = G['side_poly']; buildings = G['buildings']
 from shapely.geometry import Point
-east = n; w_dir = -d                       # the wave travels north (from the south, toward the camera and past it)
-CAM = base + east * (FW / 2 + 2.6)
+east = n; w_dir = -d                       # the wave travels away from the impact, toward the camera and past it
+from shapely.strtree import STRtree
+_bt = STRtree([b[0] for b in buildings]); _bl = [b[0] for b in buildings]
+def in_building(p2):
+    pt = Point(p2); return any(_bl[i].contains(pt) for i in _bt.query(pt))
+def on_sidewalk(p2, margin=0.0):
+    pt = Point(p2)
+    if not side_poly.contains(pt) or in_building(p2): return False
+    return margin <= 0 or not any(_bl[i].distance(pt) < margin for i in _bt.query(pt.buffer(margin)))
+curb = next(o for o in np.arange(FW / 2 - 3, FW / 2 + 10, 0.2) if on_sidewalk(base + east * o))
+wall = next((o for o in np.arange(curb, curb + 15, 0.2) if not on_sidewalk(base + east * o)), curb + 4)
+CAM = base + east * (curb + min(1.6, (wall - curb) * 0.45))
+print(f'sidewalk from {curb:.1f} to {wall:.1f} m off the centre line; camera at {np.dot(CAM - base, east):.1f}', flush=True)
 def arrival(p2):                           # seconds
     return T_SHOCK + float(np.dot(np.array(p2[:2]) - CAM, w_dir)) / C_SOUND
 print('city built', flush=True)
@@ -68,7 +89,7 @@ for o in [o for o in scn.collection.objects if o.name.startswith('i_car')]:
 # ---------------------------------------------------------------- 3) place & animate people
 def sidewalk_spot(along, side_off):
     p = base + d * along + east * side_off
-    return p if side_poly.contains(Point(p)) else None
+    return p if on_sidewalk(p, 0.6) else None
 def yaw_of(P):
     fwd, up, right = PP._frame_axes(P)
     wv = P['arm'].matrix_world.to_3x3() @ fwd
@@ -78,10 +99,14 @@ spots = []
 for P in crowd:
     for _ in range(200):
         side = random.choice([1, 1, -1])               # more on the camera side
-        off = side * (FW / 2 + random.uniform(1.0, 4.5))
+        off = side * (curb + random.uniform(0.6, 3.5))
         along = random.uniform(8, 60) if side > 0 else random.uniform(4, 70)
         p = sidewalk_spot(along, off)
         if p is not None and all(np.linalg.norm(p - q) > 1.4 for q in spots) and np.linalg.norm(p - CAM) > 9.0 and np.dot(p - CAM, d) > 6: break
+        p = None
+    if p is None:                                    # no room left on the sidewalk: drop this person
+        for o in [P['root'], P['arm']] + list(P['arm'].children): o.hide_render = True
+        continue
     spots.append(p)
     root = P['root']; root.location = (p[0], p[1], 0.15)
     bpy.context.view_layer.update()

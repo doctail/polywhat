@@ -20,10 +20,10 @@ scn = bpy.context.scene
 
 # ================================================================ OSM -> local metres
 els = json.load(open(A.osm))['elements']
-lat0, lon0 = 40.7515, -73.9840
+lat0, lon0 = A.lat0, A.lon0
 KX = math.cos(math.radians(lat0)) * 111320.0; KY = 110540.0
 def P(pt): return ((pt['lon'] - lon0) * KX, (pt['lat'] - lat0) * KY)
-AREA = box(-860, -800, 780, 820)
+AREA = box(*A.area)
 
 def fnum(s):
     try: return float(str(s).replace('m', '').split()[0].split(';')[0].replace(',', '.'))
@@ -72,7 +72,7 @@ for pg, t in outlines:
         cov = sum(parts[i][0].intersection(pg).area for i in idx)
         if cov > 0.5 * pg.area: continue      # replaced by its parts
     h, mh = heights(t)
-    if h is None: h = random.choice([14, 18, 22, 26, 30])
+    if h is None: h = random.choice(A.default_h) * random.uniform(0.85, 1.15)
     for g in (pg.geoms if isinstance(pg, MultiPolygon) else [pg]):
         buildings.append((g, max(h, 4), mh, t, t.get('roof:shape', 'flat')))
 for pg, t in parts:
@@ -91,9 +91,11 @@ for e in els:
     ls = LineString([P(g) for g in e['geometry']])
     if not ls.intersects(AREA): continue
     name = t.get('name', ''); w = W_BY[hw]
-    if 'Avenue' in name or 'Broadway' in name or 'Americas' in name: w = 17.5
+    nl = int(fnum(t.get('lanes')) or 0)
+    if nl: w = max(w, nl * 3.0 + 1.0)                                # lanes + gutters
+    if A.city == 'nyc' and ('Avenue' in name or 'Broadway' in name or 'Americas' in name): w = 17.5
     roads.append((ls, w, name, t))
-    if w >= 17: avenues.append((ls, w, name, t))
+    if w >= 13: avenues.append((ls, w, name, t))
 road_poly = unary_union([ls.buffer(w / 2, cap_style=2, join_style=2) for ls, w, _, _ in roads])
 road_poly = road_poly.buffer(-3).buffer(3).buffer(2.5).buffer(-2.5).intersection(AREA)
 side_poly = AREA.difference(road_poly)
@@ -273,18 +275,20 @@ def flat(geom, z, mat, name, walls_mat=None, wall_h=0.0):
     return ob
 
 # ================================================================ camera rig
-fifth = [x for x in avenues if x[2] == '5th Avenue']
-fl = linemerge([x[0] for x in fifth]); fl = fl if fl.geom_type == 'LineString' else max(fl.geoms, key=lambda g: g.length)
-FW = 17.5
+main = [x for x in roads if x[2] in A.street]
+fl = linemerge([x[0] for x in main]); fl = fl if fl.geom_type == 'LineString' else max(fl.geoms, key=lambda g: g.length)
+_h = np.array(fl.coords[-1]) - np.array(fl.coords[0])
+if np.dot(_h, np.array(A.look)) < 0: fl = LineString(list(fl.coords)[::-1])     # walk the street in the viewing direction
+FW = max(x[1] for x in main)
 base = np.array(fl.interpolate(A.pos).coords[0]); ahead = np.array(fl.interpolate(A.pos + 5).coords[0])
 d = (ahead - base) / np.linalg.norm(ahead - base)      # southwards (direction of traffic)
 n = np.array([-d[1], d[0]])                             # left when facing south = east
 CAM0 = base
 
 # ================================================================ build city
-esb_zone = Point(-211, -333).buffer(70)
+esb_zone = Point(*A.landmark[:2]).buffer(A.landmark[2]) if getattr(A, 'landmark', None) else None
 for i, (pg, h, mh, t, roof) in enumerate(buildings):
-    is_esb = pg.intersects(esb_zone) and (h > 100 or 'building:part' in t)
+    is_esb = esb_zone is not None and pg.intersects(esb_zone) and (h > 100 or 'building:part' in t)
     mat = ESB_MAT if is_esb else FAC[pick_facade(h)]
     building(pg, h, mh, mat, roof)
     if np.linalg.norm(np.array(pg.centroid.coords[0]) - CAM0) < 260: flush_building_obj(f'b{i}')
@@ -303,14 +307,26 @@ def strip(p0, p1, wdt):
     for q in (p0 - nn, p1 - nn, p1 + nn, p0 + nn): PV.append((q[0], q[1], 0.012))
     PF.append((k, k + 1, k + 2, k + 3)); PU.append([(0, 0), (1, 0), (1, 1), (0, 1)]); PM.append(0)
 inter_pts = []
-for als, aw, an, _ in avenues:
-    lanes = 5
+def is_oneway(t): return t.get('oneway') in ('yes', '1', 'true', '-1') or t.get('junction') == 'roundabout'
+YM = []
+for als, aw, an, at in avenues:
+    lanes = int(fnum(at.get('lanes')) or 4)
+    two = not is_oneway(at)
     for k in range(1, lanes):
-        try: ol = als.offset_curve(-aw / 2 + k * aw / lanes)
+        if two and lanes % 2 == 0 and k == lanes // 2: continue          # centre handled below
+        try: ol = als.offset_curve(-aw / 2 + 1 + k * (aw - 2) / lanes)
         except Exception: continue
         if ol.is_empty or ol.geom_type != 'LineString': continue
         for s in np.arange(0, ol.length - 3, 12.0): strip(ol.interpolate(s).coords[0], ol.interpolate(s + 3.0).coords[0], 0.13)
-street_lines = [(ls, w) for ls, w, nm, _ in roads if w < 17]
+    if two:
+        for off in (-0.12, 0.12):
+            try: ol = als.offset_curve(off)
+            except Exception: continue
+            if ol.is_empty or ol.geom_type != 'LineString': continue
+            n0 = len(PF)
+            for s in np.arange(0, ol.length - 2, 2.0): strip(ol.interpolate(s).coords[0], ol.interpolate(s + 2.0).coords[0], 0.11)
+            YM.extend(range(n0, len(PF)))
+street_lines = [(ls, w) for ls, w, nm, _ in roads if w < 13]
 for als, aw, an, _ in avenues:
     for sls, sw in street_lines:
         ip = als.intersection(sls)
@@ -326,7 +342,9 @@ for als, aw, an, _ in avenues:
         for sign in (-1, 1):
             c = np.array(ip.coords[0]) + da * sign * (sw / 2 + 2.6)
             for k in np.arange(-aw / 2 + 0.6, aw / 2 - 0.3, 1.2): strip(tuple(c + na * k - da * 1.7), tuple(c + na * k + da * 1.7), 0.6)
-mesh_obj('paint', PV, PF, PU, [M_PAINT], PM)
+for i in YM: PM[i] = 1
+M_YEL = plain('lane_yellow', (0.85, 0.6, 0.05), rough=0.7)
+mesh_obj('paint', PV, PF, PU, [M_PAINT, M_YEL], PM)
 
 # ================================================================ asset library (hidden, instanced)
 lib = bpy.data.collections.new('lib'); scn.collection.children.link(lib)
@@ -435,13 +453,18 @@ def drop_cars(line, width, one_way_dir, lanes, density, max_dist=700, skip_lane=
                 instance(coll, (p[0], p[1], 0), math.atan2(dd[1], dd[0]) + random.uniform(-0.02, 0.02))
                 s += Lc + (random.uniform(1.2, 3.0) if random.random() < density else random.uniform(8, 40))
             else: s += 6
+def traffic(line, width, t, density, max_dist=700):
+    n = max(1, int(fnum(t.get('lanes')) or 2)); ow = is_oneway(t); sg = -1 if t.get('oneway') == '-1' else 1
+    for k in range(n):
+        off = -width / 2 + (k + 0.5) * width / n
+        try: ol = line.offset_curve(off) if abs(off) > 1e-3 else line
+        except Exception: continue
+        if ol.is_empty or ol.geom_type != 'LineString': continue
+        drop_cars(ol, 0.0, sg if ow else (1 if off < 0 else -1), 1, density, max_dist)
 for als, aw, an, t in avenues:
-    q0 = np.array(als.coords[0]); q1 = np.array(als.coords[-1]); ldir = (q1 - q0) / (np.linalg.norm(q1 - q0) + 1e-9)
-    sgn = 1 if np.dot(ldir, d) > 0 else -1
-    # leave the lane where camera C stands empty in front of it
-    drop_cars(als, aw - 3, sgn, 4, 0.55, skip_lane=None)
-for sls, sw in street_lines:
-    if sw >= 10: drop_cars(sls, sw - 2.5, random.choice([1, -1]), 1, 0.4, max_dist=350)
+    traffic(als, aw - 3, t, 0.55)
+for ls_, w_, nm_, t_ in roads:
+    if 9 <= w_ < 13: traffic(ls_, w_ - 2.5, t_, 0.4, max_dist=350)
 # clear cars that would sit on top of camera positions
 for o in [o for o in scn.collection.objects if o.name.startswith('i_car')]:
     p = np.array(o.location[:2])
