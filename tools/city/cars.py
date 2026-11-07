@@ -41,6 +41,10 @@ def load_real_car(name, path, make_collection):
     for o in keep: c.objects.link(o)
     allc = [p for _, cs in meshes for p in cs]
     lo = Vector([min(p[i] for p in allc) for i in range(3)]); hi = Vector([max(p[i] for p in allc) for i in range(3)])
+    # ground = bottom of the tyres (some models carry hidden helpers or plates below the wheels)
+    WHEEL = re.compile(r'wheel|tire|tyre|rim|rubber', re.I)
+    wz = [min(p.z for p in cs) for o, cs in meshes if WHEEL.search(o.name + ' ' + ' '.join(m.name for m in o.data.materials if m))]
+    if wz: lo.z = sorted(wz)[len(wz) // 2]          # median of the wheels' lowest points
     dims = hi - lo; ctr = (lo + hi) / 2
     long_y = dims.y > dims.x
     def score(rx):
@@ -62,11 +66,11 @@ def load_real_car(name, path, make_collection):
     yaw += math.radians(fx.get('yaw', 0))
     L = max(dims.x, dims.y)
     sc = fx.get('scale', 1.0 if 3.0 < L < 7.5 else 4.7 / L)
-    M = Matrix.Scale(sc, 4) @ Matrix.Rotation(yaw, 4, 'Z') @ Matrix.Translation(Vector((-ctr.x, -ctr.y, -lo.z)))
+    M = Matrix.Scale(sc, 4) @ Matrix.Rotation(yaw, 4, 'Z') @ Matrix.Translation(Vector((-ctr.x, -ctr.y, -lo.z - fx.get('z', 0.0))))
     root = bpy.data.objects.new('root_' + name, None); c.objects.link(root); root.matrix_world = M
     for o in keep:
         if o.parent is None or o.parent not in keep:
             mw = W.get(o, o.matrix_basis).copy(); o.parent = root; o.matrix_parent_inverse = Matrix.Identity(4); o.matrix_basis = mw
-    print(f'[cars] {name}: {L * sc:.2f} x {min(dims.x, dims.y) * sc:.2f} x {dims.z * sc:.2f} m, front {"+" if front_pos else "-"}{"Y" if long_y else "X"}'
+    print(f'[cars] {name}: wheels {len(wz)}, {L * sc:.2f} x {min(dims.x, dims.y) * sc:.2f} x {dims.z * sc:.2f} m, front {"+" if front_pos else "-"}{"Y" if long_y else "X"}'
           f'{" (fixed)" if fx else ""}, dropped {dropped[:4]}', flush=True)
     return c, L * sc

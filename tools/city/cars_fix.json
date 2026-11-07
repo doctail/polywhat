@@ -1,3 +1,5 @@
 {
-  "taxi_b": {"skip": true}
+  "taxi_b": {"skip": true},
+  "suv_audi_rsq3": {"flip": true},
+  "suv_landcruiser": {"flip": true}
 }
