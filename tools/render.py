@@ -61,6 +61,14 @@ def main():
     base = find_blender() + [os.path.join(vdir, "scene.py"), "--", "--out", raw, "--res", res,
                              "--engine", a.engine, "--samples", str(samples), "--device", a.device]
     acts = getattr(TL, "ACTS", None)
+    bad = 0   # frames left half-written by an interrupted run (empty or no PNG end marker): delete so Blender redoes them
+    for f in glob.glob(os.path.join(raw, "*.png")):
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(max(0, os.path.getsize(f) - 12)); ok = fh.read().endswith(b"IEND\xaeB`\x82")
+        except OSError: ok = False
+        if not ok: os.remove(f); bad += 1
+    if bad: log(f"   removed {bad} broken frame(s) from an interrupted run")
     def done_frames():
         return {int(os.path.basename(f)[:-4]) for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0 and os.path.basename(f)[:-4].isdigit()}
     if a.shorts:
