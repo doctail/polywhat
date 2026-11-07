@@ -190,6 +190,23 @@ def icons():
     for k, fn in dict(child=child, cat=cat, ball=ball, phone=phone, balloon=balloon, paperclip=paperclip, rice=rice, sand=sand, dust=dust,
                       bacterium=bacterium, virus=virus, protein=protein, proton=proton, electron=electron, neutrino=neutrino).items():
         D[k] = fn
+    # ---- 'asteroid' comparison icons
+    def house(c):
+        c.move_to(60, 78); c.line_to(120, 28); c.line_to(180, 78); c.close_path(); c.fill()
+        c.rectangle(74, 76, 92, 58); c.fill(); cut(c); c.rectangle(110, 100, 20, 34); c.fill(); c.rectangle(84, 88, 18, 16); c.fill(); c.rectangle(140, 88, 18, 16); c.fill(); paint(c)
+    def plane(c):
+        ell(c, 120, 75, 78, 9); c.fill()
+        c.move_to(110, 72); c.line_to(80, 30); c.line_to(96, 30); c.line_to(138, 72); c.close_path(); c.fill()
+        c.move_to(110, 78); c.line_to(80, 120); c.line_to(96, 120); c.line_to(138, 78); c.close_path(); c.fill()
+        c.move_to(52, 72); c.line_to(42, 50); c.line_to(52, 50); c.line_to(66, 72); c.close_path(); c.fill()
+    def stadium(c):
+        ell(c, 120, 80, 82, 40); c.fill(); cut(c); ell(c, 120, 80, 56, 24); c.fill(); paint(c)
+        c.set_source_rgba(1, 1, 1, 0.5); ell(c, 120, 80, 50, 20); c.fill(); paint(c)
+    def mountain(c):
+        c.move_to(30, 130); c.line_to(100, 30); c.line_to(140, 86); c.line_to(160, 62); c.line_to(212, 130); c.close_path(); c.fill()
+        cut(c); c.move_to(86, 50); c.line_to(100, 30); c.line_to(114, 50); c.line_to(106, 46); c.line_to(100, 54); c.line_to(94, 46); c.close_path(); c.fill(); paint(c)
+    for k, fn in dict(house=house, plane=plane, stadium=stadium, mountain=mountain).items():
+        D[k] = fn
     return D
 
 if __name__ == "__main__":
