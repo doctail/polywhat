@@ -401,63 +401,10 @@ for i, (p, tag) in enumerate(PAINTS):
     CARS.append(make_car(f'car{i}', p, kind))
 
 # ---------------- real vehicle models (BlendKit, fetched on the pod by fetch_cars.py) replace the procedural ones
-import re
-FRONT_KW = re.compile(r'head|front|grill|grille|hood|bonnet|windshield|windscreen|wiper', re.I)
-REAR_KW = re.compile(r'tail|rear|back|trunk|boot|brake|exhaust|spoiler', re.I)
-def load_real_car(name, path):
-    try:
-        with bpy.data.libraries.load(path, link=False) as (src, dst): dst.objects = list(src.objects)
-    except Exception as e:
-        print('[cars] cannot read', path, e, flush=True); return None
-    objs = [o for o in dst.objects if o is not None and o.type in ('MESH', 'EMPTY', 'CURVE', 'ARMATURE')]
-    def wmat(o):                       # matrix_world is not evaluated for freshly appended data
-        m = o.matrix_basis.copy()
-        while o.parent is not None:
-            m = o.parent.matrix_basis @ o.matrix_parent_inverse @ m; o = o.parent
-        return m
-    W = {o: wmat(o) for o in objs}
-    meshes = []
-    for o in objs:
-        if o.type != 'MESH' or len(o.data.vertices) == 0: continue
-        co = np.empty(len(o.data.vertices) * 3, dtype=np.float32); o.data.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
-        a, b = co.min(0), co.max(0)
-        cs = [W[o] @ Vector((x, y, z)) for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])]
-        ext = max(max(c[i] for c in cs) - min(c[i] for c in cs) for i in range(3))
-        if ext > 9 or len(o.data.polygons) == 0: continue          # studio floors, backdrops
-        meshes.append((o, cs))
-    if not meshes: return None
-    keep = set(o for o, _ in meshes) | set(o for o in objs if o.type != 'MESH')
-    c = asset_collection('rc_' + name)
-    for o in keep: c.objects.link(o)
-    allc = [p for _, cs in meshes for p in cs]
-    lo = Vector([min(p[i] for p in allc) for i in range(3)]); hi = Vector([max(p[i] for p in allc) for i in range(3)])
-    dims = hi - lo; ctr = (lo + hi) / 2
-    long_y = dims.y > dims.x
-    # which end is the front?  centroids of parts whose object/material names say front or rear
-    def score(rx):
-        acc = []
-        for o, cs in meshes:
-            names = o.name + ' ' + ' '.join(m.name for m in o.data.materials if m)
-            if rx.search(names): acc.append(sum((p.y if long_y else p.x) for p in cs) / 8)
-        return sum(acc) / len(acc) if acc else None
-    f, r = score(FRONT_KW), score(REAR_KW)
-    if f is not None and r is not None and abs(f - r) > 0.3: front_pos = f > r
-    elif f is not None: front_pos = f > (ctr.y if long_y else ctr.x)
-    elif r is not None: front_pos = r < (ctr.y if long_y else ctr.x)
-    else: front_pos = not long_y            # Blender convention: cars usually face -Y
-    # rotation that sends the front direction to +X
-    if long_y: yaw = -math.pi / 2 if front_pos else math.pi / 2
-    else: yaw = 0.0 if front_pos else math.pi
-    L = max(dims.x, dims.y)
-    sc = 1.0 if 3.0 < L < 7.5 else 4.7 / L
-    from mathutils import Matrix
-    M = Matrix.Scale(sc, 4) @ Matrix.Rotation(yaw, 4, 'Z') @ Matrix.Translation(Vector((-ctr.x, -ctr.y, -lo.z)))
-    root = bpy.data.objects.new('root_' + name, None); c.objects.link(root); root.matrix_world = M
-    for o in keep:
-        if o.parent is None or o.parent not in keep:
-            mw = W.get(o, o.matrix_basis).copy(); o.parent = root; o.matrix_parent_inverse = Matrix.Identity(4); o.matrix_basis = mw
-    print(f'[cars] {name}: length {L * sc:.2f} m, front {"+" if front_pos else "-"}{"Y" if long_y else "X"} (kw f={f} r={r})', flush=True)
-    return c, L * sc
+CITY_DIR = A.city_dir
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location('cars', os.path.join(CITY_DIR, 'cars.py')); CARSMOD = _ilu.module_from_spec(_spec); _spec.loader.exec_module(CARSMOD)
+def load_real_car(name, path): return CARSMOD.load_real_car(name, path, asset_collection)
 CARS_DIR = getattr(A, 'cars', os.path.join(os.path.dirname(TEX), 'cars'))
 REAL = []
 if os.path.isdir(CARS_DIR):

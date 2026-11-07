@@ -46,7 +46,7 @@ print('people built', flush=True)
 # ---------------------------------------------------------------- 2) the city
 class NS: pass
 A = NS(); A.tex = os.path.join(ARGS.assets, 'tex'); A.models = os.path.join(ARGS.assets, 'models')
-A.osm = os.path.join(ROOT, 'tools', 'city', 'data', 'osm_midtown.json'); A.pos = 1000.0; A.engine = ARGS.engine
+A.osm = os.path.join(ROOT, 'tools', 'city', 'data', 'osm_midtown.json'); A.city_dir = os.path.join(ROOT, 'tools', 'city'); A.pos = 1000.0; A.engine = ARGS.engine
 G = dict(A=A, __name__='city')
 CITY = os.path.join(ROOT, 'tools', 'city', 'city.py')
 exec(compile(open(CITY).read(), CITY, 'exec'), G)
