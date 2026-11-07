@@ -1,10 +1,10 @@
-# What If You Got Lighter Every Hour and Couldn't Stop?
+# What If You Lost Half Your Weight Every Hour?
 
 ## Title (main)
-What If You Got Lighter Every Hour and Couldn't Stop?
+What If You Lost Half Your Weight Every Hour?
 
 ## Title (A/B test with "Test & Compare")
-What If Your Weight Halved Every Hour?
+What If You Got Lighter Every Hour and Couldn't Stop?
 
 ## Description
 What if your mass halved every single hour, and nothing could stop it?
