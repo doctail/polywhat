@@ -138,13 +138,12 @@ def act_house():
         box("toe", 0.1, 0.05, 0.09, 0x2f4a66, (0, 0.05, -0.1), parent=shoe, bevel=0.028)
         box("toecap", 0.104, 0.028, 0.05, 0xf4f4f2, (0, 0.03, -0.14), parent=shoe, bevel=0.013)
         for k in range(4): box("lace", 0.055, 0.008, 0.01, 0xffffff, (0, 0.11, -0.04 + k * 0.03), parent=shoe)
-        limb(f"jean{s}", B(fx, 0.18, fz + 0.08), B(fx + s * 0.02, 1.03, fz + 0.16), 0.055, 0.072, 0x3d5a80, stand)
     merge_static("house_static", S); bake_modifiers(scene)
     cam = camera(60); hL, hR = hand(cam, -1), hand(cam, 1)
     keyat(door, "rotation_euler", (0, 0, 0), 35.2); keyat(door, "rotation_euler", (0, 0, -1.7), 36.8)
     SEGS = {0: "abcdef", 1: "bc", 2: "abdeg", 3: "abcdg", 4: "bcfg", 5: "acdfg", 6: "acdefg", 7: "abc", 8: "abcdefg", 9: "abcdfg"}
     EYE = 1.62
-    P_SCALE, L_SCALE = Vector((0, EYE, 0.5)), Vector((0, 0, -0.12))
+    P_SCALE, L_SCALE = Vector((0, EYE, 0.42)), Vector((0, 0, -0.2))
     def state(t):
         p, l, roll = P_SCALE.copy(), L_SCALE.copy(), 0.0
         if 3.9 < t < 4.8: p.y += 0.07 * math.sin((t - 3.9) / 0.9 * math.pi)           # hour one: you bob up off your heels
@@ -666,7 +665,7 @@ def act_space(kind):
         kv(W["beta"], bv, f); kv(W["gamma"], g, f)
         ang = math.radians(0.27) / max(au, 1)                               # Sun's apparent radius (rest frame)
         kv(W["sunk"], min(2.0e5, 1.0 / max(ang * ang * 2, 1e-9)), f); kv(W["sunb"], min(200.0, 25.0 * (40.0 / max(au, 40.0)) ** 1.0), f)
-        kv(W["ahead"], 2.0 * sm((h - 75) / 30), f)
+        kv(W["ahead"], 0.45 * sm((h - 75) / 30), f)
         kv(W["starb"], 1.0 if kind != "outro" else 1 - 0.5 * sm((t - 515) / 20), f)
         cam_key(cam, Vector((0, 0, 0)), look(t), f, roll=0.02 * math.sin(t * 0.2))
         vp = voy_pos(t); voy.location = B(*vp); voy.rotation_euler = (0.3, 0.2, t * 0.1); key(voy, "location", f); key(voy, "rotation_euler", f)
