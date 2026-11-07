@@ -41,7 +41,11 @@ def main():
     ap.add_argument("--device", default="gpu"); ap.add_argument("--res", default=None)
     ap.add_argument("--bench", type=int, default=0, help="render only the first N frames and report seconds per frame")
     ap.add_argument("--shorts", action="store_true", help="render only the Shorts segments (videos/X/shorts.py) and build the vertical Shorts")
+    ap.add_argument("--loop", action="store_true", help="make the purpose-built 10 s loop Short (videos/X/loop.py)")
     a = ap.parse_args()
+    if a.loop:
+        sys.exit(subprocess.run([sys.executable, os.path.join(ROOT, "tools", "loopshort.py"), a.video, "--device", a.device]
+                                + (["--preview"] if a.preview else [])).returncode)
     vdir = os.path.join(ROOT, "videos", a.video)
     if not os.path.isdir(vdir): sys.exit(f"unknown video '{a.video}'. Available: {os.listdir(os.path.join(ROOT, 'videos'))}")
     out_root = os.environ.get("OUT_DIR") or ("/workspace/polywhat-out" if os.path.isdir("/workspace") else os.path.join(ROOT, "out"))
