@@ -1,5 +1,8 @@
 {
   "taxi_b": {"skip": true},
   "suv_audi_rsq3": {"flip": true},
-  "suv_landcruiser": {"flip": true}
+  "suv_landcruiser": {"flip": true},
+  "police": {"z": 0.53},
+  "sedan_bmw_a": {"z": 0.15},
+  "van_patriot": {"z": -0.27}
 }
