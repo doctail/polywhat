@@ -61,7 +61,8 @@ def main():
         return {int(os.path.basename(f)[:-4]) for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0 and os.path.basename(f)[:-4].isdigit()}
     if a.shorts:
         spec = importlib.util.spec_from_file_location("shorts", os.path.join(vdir, "shorts.py")); SM = importlib.util.module_from_spec(spec); spec.loader.exec_module(SM)
-        segs = [(int(round(s["start"] * TL.FPS)) + 1, int(round(s["end"] * TL.FPS)) + 1) for s in SM.SHORTS]
+        fr_ = lambda x: int(round(x * TL.FPS)) + 1
+        segs = [(fr_(c0), fr_(c1)) for s in SM.SHORTS for c0, c1, _ in s["clips"]]
         for name, s0, s1 in acts:
             f0, f1 = int(round(s0 * TL.FPS)) + 1, int(round(s1 * TL.FPS))
             for g0, g1 in segs:
@@ -74,15 +75,17 @@ def main():
                 log(f"   {time.time() - ta:.0f}s")
         wav = os.path.join(work, "audio.wav")
         if not os.path.exists(wav): subprocess.run([sys.executable, os.path.join(vdir, "audio.py"), wav], check=True)
-        for i, (g0, g1) in enumerate(segs, 1):
+        by_num = {int(os.path.basename(f)[:-4]): f for f in glob.glob(os.path.join(raw, "*.png")) if os.path.basename(f)[:-4].isdigit()}
+        for i, sh in enumerate(SM.SHORTS, 1):      # clean{i}.mp4 = the short's clips back to back (picture + audio), no overlay
             clean = os.path.join(out_root, f"{a.video}-clean{i}.mp4")
-            seq = os.path.join(work, f"seq{i}"); shutil.rmtree(seq, ignore_errors=True); os.makedirs(seq)
-            by_num = {int(os.path.basename(f)[:-4]): f for f in glob.glob(os.path.join(raw, "*.png")) if os.path.basename(f)[:-4].isdigit()}
-            for j, fn in enumerate(range(g0, g1)): os.symlink(by_num[fn], os.path.join(seq, f"{j:05d}.png"))
-            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(TL.FPS), "-i", os.path.join(seq, "%05d.png"),
-                            "-ss", f"{(g0 - 1) / TL.FPS:.3f}", "-i", wav, "-frames:v", str(g1 - g0), "-map", "0:v", "-map", "1:a",
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p", "-af", "loudnorm=I=-14:TP=-1.5",
-                            "-c:a", "aac", "-b:a", "192k", "-shortest", clean], check=True)
+            seq = os.path.join(work, f"seq{i}"); shutil.rmtree(seq, ignore_errors=True); os.makedirs(seq); j = 0
+            for c0, c1, _ in sh["clips"]:
+                for fn in range(fr_(c0), fr_(c1)): os.symlink(by_num[fn], os.path.join(seq, f"{j:05d}.png")); j += 1
+            af = "".join(f"[1:a]atrim=start={c0:.3f}:end={c1:.3f},asetpts=PTS-STARTPTS[a{k}];" for k, (c0, c1, _) in enumerate(sh["clips"]))
+            af += "".join(f"[a{k}]" for k in range(len(sh["clips"]))) + f"concat=n={len(sh['clips'])}:v=0:a=1,loudnorm=I=-14:TP=-1.5[aout]"
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(TL.FPS), "-i", os.path.join(seq, "%05d.png"), "-i", wav,
+                            "-filter_complex", af, "-map", "0:v", "-map", "[aout]", "-c:v", "libx264", "-preset", "medium", "-crf", "16",
+                            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", clean], check=True)
         subprocess.run([sys.executable, os.path.join(ROOT, "tools", "shorts.py"), a.video, "--clean", "--out", out_root], check=True)
         log(f"DONE shorts in {(time.time() - t0) / 60:.1f} min -> {out_root}/{a.video}-short*.mp4"); return
     if a.bench:
