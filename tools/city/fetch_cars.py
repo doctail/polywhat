@@ -34,7 +34,8 @@ def req(url, auth=True, raw=False):
                 data = r.read(); return data if raw else json.loads(data)
         except urllib.error.HTTPError as e:
             print('  http', e.code, url[:90], flush=True)
-            if e.code in (401, 403): raise SystemExit('BlendKit refused the key (401/403): check BLENDERKIT_API_KEY')
+            if e.code in (401, 403):
+                print('[cars] BlendKit refused the key (401/403): check BLENDERKIT_API_KEY. Continuing with the cars already downloaded / procedural cars.'); sys.exit(0)
         except Exception as e:
             print('  retry', i + 1, e, flush=True)
         time.sleep(3)
