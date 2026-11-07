@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = json.load(open(os.path.join(HERE, 'cars_fix.json'))) if os.path.exists(os.path.join(HERE, 'cars_fix.json')) else {}
 FRONT_KW = re.compile(r'head|front|grill|grille|hood|bonnet|windshield|windscreen|wiper', re.I)
 REAR_KW = re.compile(r'tail|rear|back|trunk|boot|brake|exhaust|spoiler', re.I)
-JUNK_KW = re.compile(r'shadow|ground|floor|plane|backdrop|studio|catcher|platform|base_?plate', re.I)
+JUNK_KW = re.compile(r'shadow|ground|floor|backdrop|studio|catcher|^WGT|sensor', re.I)   # NOT 'plane': modellers often leave bodies named Plane.0xx
 
 def load_real_car(name, path, make_collection):
     try:
@@ -31,10 +31,11 @@ def load_real_car(name, path, make_collection):
         cs = [W[o] @ Vector((x, y, z)) for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])]
         ext = [max(c[i] for c in cs) - min(c[i] for c in cs) for i in range(3)]
         flat = ext[2] < 0.03 and max(ext[0], ext[1]) > 1.0          # shadow planes, floors
-        if max(ext) > 9 or flat or JUNK_KW.search(o.name):
+        if max(ext) > 9 or flat or JUNK_KW.search(o.name) or o.hide_render:
             dropped.append(o.name); continue
         meshes.append((o, cs))
     if not meshes: return None
+    if FIX.get(name, {}).get('skip'): return None
     keep = set(o for o, _ in meshes) | set(o for o in objs if o.type != 'MESH')
     c = make_collection('rc_' + name)
     for o in keep: c.objects.link(o)
