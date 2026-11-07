@@ -40,6 +40,7 @@ def main():
     ap.add_argument("--engine", default="eevee"); ap.add_argument("--samples", type=int, default=None)
     ap.add_argument("--device", default="gpu"); ap.add_argument("--res", default=None)
     ap.add_argument("--bench", type=int, default=0, help="render only the first N frames and report seconds per frame")
+    ap.add_argument("--shorts", action="store_true", help="render only the Shorts segments (videos/X/shorts.py) and build the vertical Shorts")
     a = ap.parse_args()
     vdir = os.path.join(ROOT, "videos", a.video)
     if not os.path.isdir(vdir): sys.exit(f"unknown video '{a.video}'. Available: {os.listdir(os.path.join(ROOT, 'videos'))}")
@@ -58,6 +59,32 @@ def main():
     acts = getattr(TL, "ACTS", None)
     def done_frames():
         return {int(os.path.basename(f)[:-4]) for f in glob.glob(os.path.join(raw, "*.png")) if os.path.getsize(f) > 0 and os.path.basename(f)[:-4].isdigit()}
+    if a.shorts:
+        spec = importlib.util.spec_from_file_location("shorts", os.path.join(vdir, "shorts.py")); SM = importlib.util.module_from_spec(spec); spec.loader.exec_module(SM)
+        segs = [(int(round(s["start"] * TL.FPS)) + 1, int(round(s["end"] * TL.FPS)) + 1) for s in SM.SHORTS]
+        for name, s0, s1 in acts:
+            f0, f1 = int(round(s0 * TL.FPS)) + 1, int(round(s1 * TL.FPS))
+            for g0, g1 in segs:
+                a0, a1 = max(f0, g0), min(f1, g1)
+                if a0 > a1: continue
+                have = done_frames()
+                if all(f in have for f in range(a0, a1 + 1)): continue
+                ta = time.time(); log(f"   act {name}: frames {a0}-{a1}")
+                subprocess.run(base + ["--act", name, "--frames", f"{a0}-{a1}"], check=True)
+                log(f"   {time.time() - ta:.0f}s")
+        wav = os.path.join(work, "audio.wav")
+        if not os.path.exists(wav): subprocess.run([sys.executable, os.path.join(vdir, "audio.py"), wav], check=True)
+        for i, (g0, g1) in enumerate(segs, 1):
+            clean = os.path.join(out_root, f"{a.video}-clean{i}.mp4")
+            seq = os.path.join(work, f"seq{i}"); shutil.rmtree(seq, ignore_errors=True); os.makedirs(seq)
+            by_num = {int(os.path.basename(f)[:-4]): f for f in glob.glob(os.path.join(raw, "*.png")) if os.path.basename(f)[:-4].isdigit()}
+            for j, fn in enumerate(range(g0, g1)): os.symlink(by_num[fn], os.path.join(seq, f"{j:05d}.png"))
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(TL.FPS), "-i", os.path.join(seq, "%05d.png"),
+                            "-ss", f"{(g0 - 1) / TL.FPS:.3f}", "-i", wav, "-frames:v", str(g1 - g0), "-map", "0:v", "-map", "1:a",
+                            "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p", "-af", "loudnorm=I=-14:TP=-1.5",
+                            "-c:a", "aac", "-b:a", "192k", "-shortest", clean], check=True)
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "shorts.py"), a.video, "--clean", "--out", out_root], check=True)
+        log(f"DONE shorts in {(time.time() - t0) / 60:.1f} min -> {out_root}/{a.video}-short*.mp4"); return
     if a.bench:
         cmd = base + ["--frames", f"1-{a.bench}"] + (["--act", acts[0][0]] if acts else [])
         tb = time.time(); subprocess.run(cmd, check=True); el = time.time() - tb

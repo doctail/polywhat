@@ -30,8 +30,10 @@ def main():
     vdir = os.path.join(ROOT, "videos", name); sys.path.insert(0, vdir)
     TL = load(os.path.join(vdir, "timeline.py"), "timeline"); SH = load(os.path.join(vdir, "shorts.py"), "shorts").SHORTS
     only = [int(x) for x in opt("--only", "").split(",") if x]
+    clean = "--clean" in a
+    probe_src = os.path.join(out, f"{name}-clean1.mp4") if clean else src
     W0, H0 = map(int, subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                                                "-of", "csv=p=0", src]).decode().split(","))
+                                                "-of", "csv=p=0", probe_src]).decode().split(","))
     k = W0 / 1920.0
     cw, ch, cx, cy = int(792 * k) // 2 * 2, int(880 * k) // 2 * 2, int(564 * k), int(30 * k)
     OW, OH, VY, VH = 1080, 1920, 420, 1200
@@ -42,11 +44,12 @@ def main():
         if only and i not in only: continue
         t0, t1 = s["start"], s["end"]; dur = t1 - t0
         dst = os.path.join(out, f"{name}-short{i}.mp4")
-        dec = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(t0), "-t", str(dur), "-i", src, "-vf",
+        vsrc, seek = (os.path.join(out, f"{name}-clean{i}.mp4"), 0.0) if clean else (src, t0)
+        dec = subprocess.Popen(["ffmpeg", "-v", "error", "-ss", str(seek), "-t", str(dur), "-i", vsrc, "-vf",
                                 f"crop={cw}:{ch}:{cx}:{cy},scale={OW}:{VH}:flags=lanczos,fps=30", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                                stdout=subprocess.PIPE)
         enc = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OW}x{OH}", "-r", "30", "-i", "-",
-                                "-ss", str(t0), "-t", str(dur), "-i", src, "-map", "0:v", "-map", "1:a",
+                                "-ss", str(seek), "-t", str(dur), "-i", vsrc, "-map", "0:v", "-map", "1:a",
                                 "-af", f"afade=t=in:d=0.25,afade=t=out:st={dur - 0.6}:d=0.6",
                                 "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
                                 "-movflags", "+faststart", "-shortest", dst], stdin=subprocess.PIPE)
