@@ -19,9 +19,10 @@ def overlay(img, t, L, ts=None):
     """t = time in the Short, ts = time in the rendered loop (the Short may start mid-cycle, right on the action)."""
     ts = t if ts is None else ts
     W, H = img.size; k = W / 1080
-    p = ts % P; tb = L.get("pop_at", 2.2)
+    PP = L.get("pop_every", P)
+    p = ts % PP; tb = L.get("pop_at", 2.2)
     since = p - tb
-    if since < 0: since += P
+    if since < 0: since += PP
     # punch-in zoom on every break (same each cycle -> still seamless)
     z = 1.0 + 0.14 * max(0.0, 1 - since / 0.35) ** 2
     if z > 1.001:
@@ -85,9 +86,16 @@ def audio(L, path):
             add(o + 0.7, sfx.creak(1.4, 0.16, 12, 40, (250, 900)))
             add(o + 2.15, sfx.crack(0.4, 0.55, 14, 900, 6000)); add(o + 2.2, sfx.thud(48, 0.6, 0.45))
             add(o + 2.25, sfx.whoosh(0.75, 0.3, 200, 1500)); add(o + 3.0, sfx.thud(42, 0.9, 0.9)); add(o + 3.02, sfx.debris(0.6, 0.25))
+        elif L["dir"] == "shrink":
+            pass                                  # its sounds are added below, every halving
         else:
             add(o + 0.2, sfx.whoosh(1.8, 0.12, 400, 2500)); add(o + 2.0, sfx.thud(70, 0.3, 0.3))
             add(o + 2.35, sfx.crack(0.35, 0.4, 10, 1200, 7000)); add(o + 2.45, sfx.whoosh(0.8, 0.3, 500, 3000))
+    if L["dir"] == "shrink":                     # a falling chime + soft rush at every halving
+        for q in range(int(DUR / 2.5) + 2):
+            tq = q * 2.5 + L.get("pop_at", 0.0)
+            for j, nn in enumerate((88, 83, 79, 76)): add(tq + j * 0.09, sfx.pluck(nn, 1.2, 0.09))
+            add(tq - 0.4, sfx.whoosh(1.2, 0.10, 500, 4000))
     for i in range(int(DUR * 2) + 2):            # clock ticking: every hour, again
         add(i * 0.5, sfx.pluck(96 if i % 2 == 0 else 91, 0.08, 0.10))
     # drone with frequencies that complete whole cycles in 10 s -> seamless
@@ -109,7 +117,8 @@ def main():
     os.makedirs(raw, exist_ok=True); os.makedirs(comp, exist_ok=True)
     res = opt("--res", "540x960" if preview else "1080x1920"); samples = opt("--samples", "8" if preview else "32")
     log(f"loop {name}: render {res}")
-    subprocess.run(find_blender() + [os.path.join(ROOT, "tools", "loop_scene.py"), "--", "--dir", L["dir"], "--out", raw, "--res", res,
+    scene_py = "droste_scene.py" if L["dir"] == "shrink" else "loop_scene.py"
+    subprocess.run(find_blender() + [os.path.join(ROOT, "tools", scene_py), "--", "--dir", L["dir"], "--out", raw, "--res", res,
                                      "--samples", samples, "--device", opt("--device", "gpu")], check=True)
     frames = sorted([f for f in os.listdir(raw) if f[:-4].isdigit()], key=lambda f: int(f[:-4]))
     sh = int(round(L.get("start", 0.0) * FPS))   # start the Short on the action, not on the calm
