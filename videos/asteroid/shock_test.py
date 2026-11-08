@@ -147,13 +147,30 @@ print('people placed', flush=True)
 
 # ---------------------------------------------------------------- 4) glass: window shards from street-facing facades
 glass = bpy.data.materials.new('shard'); gb = glass.node_tree.nodes['Principled BSDF']
-gb.inputs['Base Color'].default_value = (0.5, 0.58, 0.62, 1); gb.inputs['Metallic'].default_value = 0.9
+gb.inputs['Base Color'].default_value = (0.32, 0.38, 0.4, 1); gb.inputs['Metallic'].default_value = 0.9
 gb.inputs['Roughness'].default_value = 0.12; gb.inputs['Coat Weight'].default_value = 1.0
 # one irregular shard triangle, size 1
 sh_me = bpy.data.meshes.new('shard'); sh_me.from_pydata([(0, 0, 0), (1, 0.15, 0.05), (0.35, 0.9, -0.05)], [], [(0, 1, 2)])
 sh_me.materials.append(glass); shard_obj = bpy.data.objects.new('shard_src', sh_me)
 G['lib'].objects.link(shard_obj)
 pts, vel, t0, tl, spin, size = [], [], [], [], [], []
+# car footprints: shards that fall on a car stop on its roof instead of passing through it
+from shapely.geometry import Polygon as _Poly
+_clen = {id(c): L for c, L in G['CARS']}
+_cars = []
+for o in scn.collection.objects:
+    c = getattr(o, 'instance_collection', None)
+    if c is None or id(c) not in _clen: continue
+    L = _clen[id(c)]; W = 1.95; a = o.rotation_euler.z; ca, sa = math.cos(a), math.sin(a)
+    pts_ = [(o.location.x + ca * x - sa * y, o.location.y + sa * x + ca * y) for x, y in ((-L / 2, -W / 2), (L / 2, -W / 2), (L / 2, W / 2), (-L / 2, W / 2))]
+    _cars.append((_Poly(pts_), 1.25 if 'van' in c.name or 'suv' in c.name or 'police' in c.name or 'taxi' in c.name else 1.15))
+_ct = STRtree([c[0] for c in _cars]) if _cars else None
+def ground_at(x, y):
+    if _ct is None: return Z_GROUND
+    pt = Point(x, y)
+    for i in _ct.query(pt):
+        if _cars[i][0].contains(pt): return _cars[i][1]
+    return Z_GROUND
 G_ACC = 9.81; Z_GROUND = 0.17
 for pg, h, mh, tags, roof in buildings:
     c = np.array(pg.centroid.coords[0])
@@ -182,10 +199,12 @@ for pg, h, mh, tags, roof in buildings:
                     vz = random.uniform(-1.0, 3.0)
                     # time to reach the ground:  zz + vz t - g/2 t^2 = Z_GROUND
                     tland = (vz + math.sqrt(vz * vz + 2 * G_ACC * (zz - Z_GROUND))) / G_ACC
+                    zg = ground_at(q[0] + v[0] * tland, q[1] + v[1] * tland)
+                    if zg > Z_GROUND: tland = (vz + math.sqrt(vz * vz + 2 * G_ACC * (zz - zg))) / G_ACC
                     pts.append((q[0], q[1], zz)); vel.append((v[0], v[1], vz))
                     t0.append(ta + random.uniform(0.0, 0.12)); tl.append(tland)
                     spin.append((random.uniform(-25, 25), random.uniform(-25, 25), random.uniform(-25, 25)))
-                    size.append(random.uniform(0.05, 0.18) * (2.0 if random.random() < 0.08 else 1.0))
+                    size.append(random.uniform(0.04, 0.12) * (1.6 if random.random() < 0.06 else 1.0))
 print('shards', len(pts), flush=True)
 pm = bpy.data.meshes.new('shard_pts'); pm.from_pydata(pts, [], [])
 def attr(name, typ, data, comp):
