@@ -26,6 +26,9 @@ def overlay(img, t, L, ts=None):
     z = 1.0 + 0.14 * max(0.0, 1 - since / 0.35) ** 2
     if z > 1.001:
         cw, ch = int(W / z), int(H / z); img = img.crop(((W - cw) // 2, (H - ch) // 2, (W - cw) // 2 + cw, (H - ch) // 2 + ch)).resize((W, H), Image.LANCZOS)
+    if L.get("grade"):   # punchier frame: contrast, colour, vignette
+        from PIL import ImageEnhance
+        img = ImageEnhance.Color(ImageEnhance.Contrast(img.convert("RGB")).enhance(1.28)).enhance(1.25)
     base = img.convert("RGBA")
     # graphic hook: red marker circle drawn around the spot that is about to give way
     hk = L.get("mark")
@@ -54,17 +57,17 @@ def overlay(img, t, L, ts=None):
         a = int(120 * (1 - y / (H * 0.18))); gd.line([(0, y), (W, y)], fill=(0, 0, 0, a))
     base.alpha_composite(g); d = ImageDraw.Draw(base)
     # label + pop at each break
-    lab = L.get("label", "YOUR WEIGHT")
-    tw = sum(d.textlength(c, font=sans(int(26 * k))) + 6 * k for c in lab) - 6 * k
-    spaced(d, (W / 2 - tw / 2, int(150 * k)), lab, sans(int(26 * k)), (255, 255, 255, 220), 6 * k)
+    lab = L.get("label", "YOUR WEIGHT"); ls_ = int(L.get("label_size", 26) * k)
+    tw = sum(d.textlength(c, font=sans(ls_)) + 6 * k for c in lab) - 6 * k
+    spaced(d, (W / 2 - tw / 2, int(150 * k)), lab, sans(ls_), (255, 255, 255, 235), 6 * k)
     sc = 1.0 + 0.35 * max(0.0, 1 - since / 0.25)
     shadow_text(base, (W // 2, int(330 * k)), L["pop"], serif(int(150 * k * sc)), (255, 205, 120, 255), "ms", 12 * k, 1.0)
     for a, b, txt in L["lines"]:
         if a <= t < b:
-            al = min(1.0, (t - a) / 0.15, (b - t) / 0.15)
-            lines = [txt] if ImageDraw.Draw(base).textlength(txt, font=italic(int(74 * k))) < W * 0.86 else _wrap(txt)
+            al = min(1.0, (t - a) / 0.15 if a > 0 else 1.0, (b - t) / 0.15)   # first line is fully on at frame 0
+            lines = [txt] if ImageDraw.Draw(base).textlength(txt, font=italic(int(L.get('text_size', 74) * k))) < W * 0.86 else _wrap(txt)
             for j, ln in enumerate(lines):
-                shadow_text(base, (W // 2, int((L.get('text_y', 1500) + j * 88 - (len(lines) - 1) * 44) * k)), ln, italic(int(74 * k)), (255, 255, 255, 255), "ms", 14 * k, al)
+                shadow_text(base, (W // 2, int((L.get('text_y', 1500) + j * 88 - (len(lines) - 1) * 44) * k)), ln, italic(int(L.get('text_size', 74) * k)), (255, 255, 255, 255), "ms", 14 * k, al)
     return base.convert("RGB")
 
 def _wrap(s):
