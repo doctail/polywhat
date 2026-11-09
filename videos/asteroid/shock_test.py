@@ -413,13 +413,27 @@ if ARGS.engine == 'cycles':
     scn.cycles.volume_step_rate = 4.0
     if ARGS.device == 'gpu':
         pr = bpy.context.preferences.addons['cycles'].preferences
+        chosen = None
         for tdev in ('OPTIX', 'CUDA'):
-            try: pr.compute_device_type = tdev; break
-            except Exception: pass
-        pr.get_devices(); [setattr(dv, 'use', dv.type != 'CPU') for dv in pr.devices]; scn.cycles.device = 'GPU'
+            try: pr.compute_device_type = tdev
+            except Exception: continue
+            pr.refresh_devices() if hasattr(pr, 'refresh_devices') else pr.get_devices()
+            gpus = [dv for dv in pr.get_devices_for_type(tdev)] if hasattr(pr, 'get_devices_for_type') else [dv for dv in pr.devices if dv.type == tdev]
+            if gpus:
+                for dv in pr.devices: dv.use = dv.type == tdev
+                chosen = (tdev, [dv.name for dv in gpus]); break
+        if not chosen:
+            print('[gpu] ERROR: no OptiX/CUDA device found, Cycles would run on the CPU (very slow). Stopping.', flush=True)
+            sys.exit(2)
+        scn.cycles.device = 'GPU'
+        print(f'[gpu] Cycles on {chosen[0]}: {chosen[1]}', flush=True)
         scn.render.use_persistent_data = True
-        try: scn.cycles.denoiser = 'OPTIX'                   # GPU denoiser, much faster than OIDN on CPU
-        except Exception: pass
+        if chosen[0] == 'OPTIX':
+            try: scn.cycles.denoiser = 'OPTIX'               # GPU denoiser, much faster than OIDN on CPU
+            except Exception: pass
+        else:
+            try: scn.cycles.denoising_use_gpu = True         # OIDN on the GPU
+            except Exception: pass
 else:
     scn.render.engine = 'BLENDER_EEVEE'; ee = scn.eevee; ee.taa_render_samples = ARGS.samples
     for k, v in dict(use_raytracing=True, ray_tracing_method='SCREEN', use_fast_gi=True, use_shadows=True,

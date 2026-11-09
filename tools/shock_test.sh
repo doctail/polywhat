@@ -12,6 +12,6 @@ mkdir -p "$OUT/raw"
 START=$(date +%s)
 "$BL" -b --factory-startup -P "$ROOT/videos/asteroid/shock_test.py" -- --assets /workspace/assets --out "$OUT/raw" \
       --res "${RES:-1280x720}" --samples "${SAMPLES:-16}" --fps "${FPS:-24}" --engine "${ENGINE:-cycles}" --device gpu "$@" 2>&1 \
-      | grep --line-buffered -E "^\[shock\]|^\[cars\]|people|city built|shards|Error|Traceback|File \"" || true
+      | grep --line-buffered -E "^\[shock\]|^\[cars\]|^\[gpu\]|people|city built|shards|Error|Traceback|File \"" || true
 echo "[shock] render time: $(( ($(date +%s) - START) / 60 )) min"
 python3 "$ROOT/videos/asteroid/shock_test_post.py" "$OUT" "${FPS:-24}"
