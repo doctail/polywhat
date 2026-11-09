@@ -14,4 +14,5 @@ START=$(date +%s)
       --res "${RES:-1280x720}" --samples "${SAMPLES:-16}" --fps "${FPS:-24}" --engine "${ENGINE:-cycles}" --device gpu "$@" 2>&1 \
       | grep --line-buffered -E "^\[shock\]|^\[cars\]|^\[gpu\]|people|city built|shards|Error|Traceback|File \"" || true
 echo "[shock] render time: $(( ($(date +%s) - START) / 60 )) min"
+if [ "$(ls "$OUT/raw" 2>/dev/null | wc -l)" -eq 0 ]; then echo "[shock] no frames rendered: nothing to assemble (see the [gpu] line above)"; exit 1; fi
 python3 "$ROOT/videos/asteroid/shock_test_post.py" "$OUT" "${FPS:-24}"
