@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Speed/quality comparison on the asteroid shock clip: EEVEE vs Cycles with few samples, same frames.
+# Speed/quality comparison on the asteroid shock clip: EEVEE (16 samples) vs Cycles (20 samples), same frames.
+# CONFIGS="eevee:16 cycles:20" overrides engines:samples.
 #   bash polywhat/tools/engine_test.sh            (frames 100-220 = the wave arriving; 1280x720)
 # Result: /workspace/polywhat-out/engine_test/compare.mp4 (top EEVEE, bottom Cycles) + times.txt
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/tools/city/pod_setup.sh"
-OUT=/workspace/polywhat-out/engine_test; mkdir -p "$OUT"
+OUT=/workspace/polywhat-out/engine_test; rm -rf "$OUT"; mkdir -p "$OUT"
 FR="${FRAMES:-100-220}"
-for cfg in "eevee:64" "cycles:20"; do
+for cfg in ${CONFIGS:-eevee:16 cycles:20}; do
   eng=${cfg%%:*}; sp=${cfg##*:}
   echo "[test] $eng $sp samples, frames $FR"
   "$BL" -b --factory-startup -P "$ROOT/videos/asteroid/shock_test.py" -- --assets /workspace/assets --out "$OUT/$eng" \
