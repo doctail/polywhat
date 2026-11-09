@@ -372,7 +372,7 @@ if ARGS.cards:
 # camera: slow push, shake at the wave
 cam_data.lens = 20; cam_data.sensor_width = 36; cam_data.clip_end = 30000
 look_t = base + d * 70 - east * 30
-rng = np.random.default_rng(3)
+rng = np.random.default_rng(3); CAMROT = {}
 for f in range(1, NF + 1):
     t = f / FPS
     p = CAM + d * min(t, T_SHOCK) * 0.35 + d * max(0, t - T_SHOCK) * 0.05
@@ -384,7 +384,7 @@ for f in range(1, NF + 1):
         dec = math.exp(-(t - T_SHOCK) * 1.6) * (1.0 if t - T_SHOCK > 0.05 else 0.6)
         loc += V(tuple(rng.normal(0, 0.05 * dec, 3)))
         q = Euler((q.x + rng.normal(0, 0.022 * dec), q.y + rng.normal(0, 0.012 * dec), q.z + rng.normal(0, 0.02 * dec)))
-    cam.location = loc; cam.rotation_euler = q
+    cam.location = loc; cam.rotation_euler = q; CAMROT[f] = (q.x, q.z)
     cam.keyframe_insert('location', frame=f); cam.keyframe_insert('rotation_euler', frame=f)
 # shake keys must not be smoothed
 if cam.animation_data and cam.animation_data.action:
@@ -470,13 +470,11 @@ mx = TN.new('ShaderNodeMix'); mx.data_type = 'RGBA'
 TL_(fac.outputs[0], mx.inputs[0]); TL_(img_in, mx.inputs[6]); mx.inputs[7].default_value = (0.62, 0.66, 0.72, 1)
 if ARGS.quality:
     TL_(mx.outputs[2], outn.inputs[0])
-else:                                            # cheap motion blur from the speed pass (render motion blur is off)
-    bpy.context.view_layer.use_pass_vector = True; bpy.context.view_layer.use_pass_z = True
-    vb = TN.new('CompositorNodeVecBlur'); vb.inputs['Samples'].default_value = 8; vb.inputs['Shutter'].default_value = 0.5
-    TL_(mx.outputs[2], vb.inputs['Image']); TL_(rl.outputs['Vector'], vb.inputs['Speed']); TL_(rl.outputs['Depth'], vb.inputs['Depth'])
-    TL_(vb.outputs['Image'], outn.inputs[0])
-    if ARGS.device == 'gpu':                         # run the compositor (vector blur, dust noise) on the GPU
-        try: scn.render.compositor_device = 'GPU'; scn.render.compositor_precision = 'AUTO'
+else:                                            # camera-shake blur only: directional blur driven per frame from the camera keys
+    DB = TN.new('CompositorNodeDBlur'); DB.inputs['Samples'].default_value = 8
+    TL_(mx.outputs[2], DB.inputs['Image']); TL_(DB.outputs['Image'], outn.inputs[0])
+    if ARGS.device == 'gpu':
+        try: scn.render.compositor_device = 'GPU'
         except Exception as e: print('[comp] GPU compositor not available:', e, flush=True)
 
 if ARGS.blend: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(ARGS.blend))
@@ -496,6 +494,13 @@ for f in frames:
     nz.inputs['W'].default_value = 0.35 * t
     dk = 0.0 if t < T_SHOCK else min(1.0, (t - T_SHOCK) / 1.5)
     mx.inputs[7].default_value = tuple(a * (1 - dk) + b * dk for a, b in zip((0.62, 0.66, 0.72), (0.68, 0.63, 0.56))) + (1,)
+    if not ARGS.quality and f in CAMROT and f - 1 in CAMROT:
+        dpitch = CAMROT[f][0] - CAMROT[f - 1][0]; dyaw = CAMROT[f][1] - CAMROT[f - 1][1]
+        fov = 2 * math.atan(18.0 / cam_data.lens)
+        dx, dy = -dyaw / fov, dpitch / fov * rx / ry          # image-relative shift during one frame
+        amt = min(0.012, 0.12 * math.hypot(dx, dy))            # node accumulates over its iterations: keep it small
+        DB.inputs['Amount'].default_value = amt; DB.inputs['Direction'].default_value = math.atan2(dy, dx)
+        DB.inputs['Samples'].default_value = 4 if amt > 0.0008 else 1
     t1 = time.time(); scn.frame_set(f); scn.render.filepath = path; t2 = time.time()
     bpy.ops.render.render(write_still=True)
     print(f'[shock] frame {f}/{NF} {time.time() - t1:.1f}s  (scene {t2 - t1:.1f}s)', flush=True)
