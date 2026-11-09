@@ -163,7 +163,7 @@ for o in scn.collection.objects:
     if c is None or id(c) not in _clen: continue
     L = _clen[id(c)]; W = 1.95; a = o.rotation_euler.z; ca, sa = math.cos(a), math.sin(a)
     pts_ = [(o.location.x + ca * x - sa * y, o.location.y + sa * x + ca * y) for x, y in ((-L / 2, -W / 2), (L / 2, -W / 2), (L / 2, W / 2), (-L / 2, W / 2))]
-    _cars.append((_Poly(pts_), 1.25 if 'van' in c.name or 'suv' in c.name or 'police' in c.name or 'taxi' in c.name else 1.15))
+    _cars.append((_Poly(pts_).buffer(0.15), float(c.get('height', 1.5)) + 0.03))     # land ON the roof, never inside the cabin
 _ct = STRtree([c[0] for c in _cars]) if _cars else None
 def ground_at(x, y):
     if _ct is None: return Z_GROUND
@@ -201,6 +201,8 @@ for pg, h, mh, tags, roof in buildings:
                     tland = (vz + math.sqrt(vz * vz + 2 * G_ACC * (zz - Z_GROUND))) / G_ACC
                     zg = ground_at(q[0] + v[0] * tland, q[1] + v[1] * tland)
                     if zg > Z_GROUND: tland = (vz + math.sqrt(vz * vz + 2 * G_ACC * (zz - zg))) / G_ACC
+                    land = np.array([q[0] + v[0] * tland, q[1] + v[1] * tland])
+                    if np.linalg.norm(land - CAM) < 15 and random.random() < 0.7: continue   # no confetti carpet at the lens
                     pts.append((q[0], q[1], zz)); vel.append((v[0], v[1], vz))
                     t0.append(ta + random.uniform(0.0, 0.12)); tl.append(tland)
                     spin.append((random.uniform(-25, 25), random.uniform(-25, 25), random.uniform(-25, 25)))

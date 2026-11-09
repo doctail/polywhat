@@ -73,4 +73,5 @@ def load_real_car(name, path, make_collection):
             mw = W.get(o, o.matrix_basis).copy(); o.parent = root; o.matrix_parent_inverse = Matrix.Identity(4); o.matrix_basis = mw
     print(f'[cars] {name}: wheels {len(wz)}, {L * sc:.2f} x {min(dims.x, dims.y) * sc:.2f} x {dims.z * sc:.2f} m, front {"+" if front_pos else "-"}{"Y" if long_y else "X"}'
           f'{" (fixed)" if fx else ""}, dropped {dropped[:4]}', flush=True)
+    c['height'] = float(dims.z * sc)
     return c, L * sc
