@@ -414,11 +414,12 @@ if ARGS.engine == 'cycles':
     if ARGS.device == 'gpu':
         pr = bpy.context.preferences.addons['cycles'].preferences
         chosen = None
-        for tdev in ('OPTIX', 'CUDA'):
+        for tdev in ('OPTIX', 'CUDA'):                  # same calls as the version that ran at 100% GPU
             try: pr.compute_device_type = tdev
-            except Exception: continue
-            pr.refresh_devices() if hasattr(pr, 'refresh_devices') else pr.get_devices()
-            gpus = [dv for dv in pr.get_devices_for_type(tdev)] if hasattr(pr, 'get_devices_for_type') else [dv for dv in pr.devices if dv.type == tdev]
+            except Exception as e: print(f'[gpu] {tdev} not selectable: {e}', flush=True); continue
+            pr.get_devices()
+            print(f'[gpu] {tdev} devices: {[(dv.name, dv.type) for dv in pr.devices]}', flush=True)
+            gpus = [dv for dv in pr.devices if dv.type == tdev]
             if gpus:
                 for dv in pr.devices: dv.use = dv.type == tdev
                 chosen = (tdev, [dv.name for dv in gpus]); break
