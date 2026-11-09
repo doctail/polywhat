@@ -473,9 +473,8 @@ if ARGS.quality:
 else:                                            # camera-shake blur only: directional blur driven per frame from the camera keys
     DB = TN.new('CompositorNodeDBlur'); DB.inputs['Samples'].default_value = 8
     TL_(mx.outputs[2], DB.inputs['Image']); TL_(DB.outputs['Image'], outn.inputs[0])
-    if ARGS.device == 'gpu':
-        try: scn.render.compositor_device = 'GPU'
-        except Exception as e: print('[comp] GPU compositor not available:', e, flush=True)
+    # NOTE: keep the compositor on the CPU. The GPU compositor needs an OpenGL/Vulkan context, which on RunPod
+    # containers falls back to software rendering (same reason EEVEE is slow there): 4.4 -> 7.4 s per frame.
 
 if ARGS.blend: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(ARGS.blend))
 if ARGS.frames:
