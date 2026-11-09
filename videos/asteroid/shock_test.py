@@ -408,13 +408,17 @@ if ARGS.engine == 'cycles':
         pr.get_devices(); [setattr(dv, 'use', dv.type != 'CPU') for dv in pr.devices]; scn.cycles.device = 'GPU'
         scn.render.use_persistent_data = True
 else:
-    scn.render.engine = 'BLENDER_EEVEE'; scn.eevee.taa_render_samples = ARGS.samples
-    try: scn.eevee.use_raytracing = True
-    except Exception: pass
-    try: G['world'].sun_threshold = 1e9
-    except Exception: pass
-    G['wn']['Background'].inputs['Strength'].default_value = 0.7
-    scn.eevee.volumetric_end = 400; scn.eevee.volumetric_tile_size = '4'
+    scn.render.engine = 'BLENDER_EEVEE'; ee = scn.eevee; ee.taa_render_samples = ARGS.samples
+    for k, v in dict(use_raytracing=True, ray_tracing_method='SCREEN', use_fast_gi=True, use_shadows=True,
+                     shadow_ray_count=2, shadow_step_count=8).items():
+        try: setattr(ee, k, v)
+        except Exception as e: print('[eevee] skip', k, e)
+    # same lighting as Cycles: the HDRI sun is extracted as a shadow-casting sun (no extra lamp)
+    if 'sun' in bpy.data.objects: bpy.data.objects.remove(bpy.data.objects['sun'])
+    W = G['world']
+    for k, v in dict(sun_threshold=5.0, sun_angle=math.radians(0.6), use_sun_shadow=True).items():
+        try: setattr(W, k, v)
+        except Exception as e: print('[eevee] skip', k, e)
 # haze + DUST, both in the compositor (no sampling noise, ~free): depth from the mist pass.
 # dust at a pixel starts when the wave reaches that depth:  since = (t - T) + depth / c ;  depth = 40 + mist * 2460
 bpy.context.view_layer.use_pass_mist = True
