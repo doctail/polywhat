@@ -17,7 +17,7 @@ ap.add_argument('--assets', default='/workspace/assets'); ap.add_argument('--out
 ap.add_argument('--res', default='1920x1080'); ap.add_argument('--samples', type=int, default=48)
 ap.add_argument('--engine', default='cycles'); ap.add_argument('--device', default='gpu')
 ap.add_argument('--frames', default=''); ap.add_argument('--no-dust', action='store_true'); ap.add_argument('--no-glass', action='store_true'); ap.add_argument('--cards', action='store_true')
-ap.add_argument('--fps', type=int, default=30); ap.add_argument('--city', default='chicago'); ap.add_argument('--blend', default='')
+ap.add_argument('--fps', type=int, default=30); ap.add_argument('--quality', action='store_true'); ap.add_argument('--city', default='chicago'); ap.add_argument('--blend', default='')
 ARGS = ap.parse_args(argv)
 os.makedirs(ARGS.out, exist_ok=True)
 
@@ -394,10 +394,19 @@ rx, ry = map(int, ARGS.res.split('x'))
 scn.render.resolution_x, scn.render.resolution_y = rx, ry
 scn.render.image_settings.file_format = 'PNG'
 scn.view_settings.view_transform = 'AgX'; scn.view_settings.look = 'AgX - Base Contrast'; scn.view_settings.exposure = 0.6
-scn.render.use_motion_blur = True; scn.render.motion_blur_shutter = 0.5
+# production ("fast") profile by default; --quality restores the slow settings
+scn.render.use_motion_blur = ARGS.quality; scn.render.motion_blur_shutter = 0.5
 if ARGS.engine == 'cycles':
     scn.render.engine = 'CYCLES'; scn.cycles.samples = ARGS.samples; scn.cycles.use_denoising = True; scn.cycles.denoising_input_passes = 'RGB'; scn.cycles.denoising_prefilter = 'NONE'
     scn.cycles.transparent_max_bounces = 64; scn.cycles.max_bounces = 4; scn.cycles.glossy_bounces = 3; scn.cycles.diffuse_bounces = 2; scn.cycles.volume_bounces = 0
+    if not ARGS.quality:
+        c = scn.cycles
+        c.max_bounces = 3; c.diffuse_bounces = 1; c.glossy_bounces = 1; c.transmission_bounces = 1; c.transparent_max_bounces = 8
+        c.use_adaptive_sampling = True; c.adaptive_threshold = 0.05; c.adaptive_min_samples = 4
+        c.use_fast_gi = True; c.fast_gi_method = 'REPLACE'
+        c.texture_limit_render = '2048'
+        c.sample_clamp_indirect = 3.0                          # kills fireflies from the shards early
+        scn.render.use_simplify = True; scn.render.simplify_subdivision_render = 0
     scn.cycles.caustics_reflective = False; scn.cycles.caustics_refractive = False
     scn.cycles.volume_step_rate = 4.0
     if ARGS.device == 'gpu':
@@ -407,6 +416,8 @@ if ARGS.engine == 'cycles':
             except Exception: pass
         pr.get_devices(); [setattr(dv, 'use', dv.type != 'CPU') for dv in pr.devices]; scn.cycles.device = 'GPU'
         scn.render.use_persistent_data = True
+        try: scn.cycles.denoiser = 'OPTIX'                   # GPU denoiser, much faster than OIDN on CPU
+        except Exception: pass
 else:
     scn.render.engine = 'BLENDER_EEVEE'; ee = scn.eevee; ee.taa_render_samples = ARGS.samples
     for k, v in dict(use_raytracing=True, ray_tracing_method='SCREEN', use_fast_gi=True, use_shadows=True,
