@@ -472,9 +472,12 @@ if ARGS.quality:
     TL_(mx.outputs[2], outn.inputs[0])
 else:                                            # cheap motion blur from the speed pass (render motion blur is off)
     bpy.context.view_layer.use_pass_vector = True; bpy.context.view_layer.use_pass_z = True
-    vb = TN.new('CompositorNodeVecBlur'); vb.inputs['Samples'].default_value = 16; vb.inputs['Shutter'].default_value = 0.5
+    vb = TN.new('CompositorNodeVecBlur'); vb.inputs['Samples'].default_value = 8; vb.inputs['Shutter'].default_value = 0.5
     TL_(mx.outputs[2], vb.inputs['Image']); TL_(rl.outputs['Vector'], vb.inputs['Speed']); TL_(rl.outputs['Depth'], vb.inputs['Depth'])
     TL_(vb.outputs['Image'], outn.inputs[0])
+    if ARGS.device == 'gpu':                         # run the compositor (vector blur, dust noise) on the GPU
+        try: scn.render.compositor_device = 'GPU'; scn.render.compositor_precision = 'AUTO'
+        except Exception as e: print('[comp] GPU compositor not available:', e, flush=True)
 
 if ARGS.blend: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(ARGS.blend))
 if ARGS.frames:
