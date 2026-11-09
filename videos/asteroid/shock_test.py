@@ -17,7 +17,7 @@ ap.add_argument('--assets', default='/workspace/assets'); ap.add_argument('--out
 ap.add_argument('--res', default='1920x1080'); ap.add_argument('--samples', type=int, default=48)
 ap.add_argument('--engine', default='cycles'); ap.add_argument('--device', default='gpu')
 ap.add_argument('--frames', default=''); ap.add_argument('--no-dust', action='store_true'); ap.add_argument('--no-glass', action='store_true'); ap.add_argument('--cards', action='store_true')
-ap.add_argument('--fps', type=int, default=30); ap.add_argument('--quality', action='store_true'); ap.add_argument('--city', default='chicago'); ap.add_argument('--blend', default='')
+ap.add_argument('--fps', type=int, default=24); ap.add_argument('--quality', action='store_true'); ap.add_argument('--city', default='chicago'); ap.add_argument('--blend', default='')
 ARGS = ap.parse_args(argv)
 os.makedirs(ARGS.out, exist_ok=True)
 
@@ -468,7 +468,13 @@ DUST_GAIN = cm('MULTIPLY', dust.outputs[0], 0.0)                                
 fac = cm('ADD', haze.outputs[0], DUST_GAIN.outputs[0], clamp=True)
 mx = TN.new('ShaderNodeMix'); mx.data_type = 'RGBA'
 TL_(fac.outputs[0], mx.inputs[0]); TL_(img_in, mx.inputs[6]); mx.inputs[7].default_value = (0.62, 0.66, 0.72, 1)
-TL_(mx.outputs[2], outn.inputs[0])
+if ARGS.quality:
+    TL_(mx.outputs[2], outn.inputs[0])
+else:                                            # cheap motion blur from the speed pass (render motion blur is off)
+    bpy.context.view_layer.use_pass_vector = True; bpy.context.view_layer.use_pass_z = True
+    vb = TN.new('CompositorNodeVecBlur'); vb.inputs['Samples'].default_value = 16; vb.inputs['Shutter'].default_value = 0.5
+    TL_(mx.outputs[2], vb.inputs['Image']); TL_(rl.outputs['Vector'], vb.inputs['Speed']); TL_(rl.outputs['Depth'], vb.inputs['Depth'])
+    TL_(vb.outputs['Image'], outn.inputs[0])
 
 if ARGS.blend: bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(ARGS.blend))
 if ARGS.frames:
@@ -487,6 +493,6 @@ for f in frames:
     nz.inputs['W'].default_value = 0.35 * t
     dk = 0.0 if t < T_SHOCK else min(1.0, (t - T_SHOCK) / 1.5)
     mx.inputs[7].default_value = tuple(a * (1 - dk) + b * dk for a, b in zip((0.62, 0.66, 0.72), (0.68, 0.63, 0.56))) + (1,)
-    t1 = time.time(); scn.frame_set(f); scn.render.filepath = path
+    t1 = time.time(); scn.frame_set(f); scn.render.filepath = path; t2 = time.time()
     bpy.ops.render.render(write_still=True)
-    print(f'[shock] frame {f}/{NF} {time.time() - t1:.1f}s', flush=True)
+    print(f'[shock] frame {f}/{NF} {time.time() - t1:.1f}s  (scene {t2 - t1:.1f}s)', flush=True)

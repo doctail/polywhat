@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Realism test clip for the asteroid video (12 s, Chelyabinsk shock wave on 5th Ave).
-# Usage on the pod:  bash polywhat/tools/shock_test.sh            (1280x720, Cycles GPU, 64 samples)
+# Usage on the pod:  bash polywhat/tools/shock_test.sh            (1280x720, 24 fps, Cycles GPU 16 samples, fast profile + compositor motion blur)
 #                    RES=1920x1080 SAMPLES=96 bash polywhat/tools/shock_test.sh
 #                    bash polywhat/tools/shock_test.sh --frames 1-30     (quick check of the first second)
 # Result: /workspace/polywhat-out/shock_test/shock_test.mp4  and  shock_test-light.mp4 (480p, send this one to Claude)
@@ -11,7 +11,7 @@ OUT=/workspace/polywhat-out/shock_test
 mkdir -p "$OUT/raw"
 START=$(date +%s)
 "$BL" -b --factory-startup -P "$ROOT/videos/asteroid/shock_test.py" -- --assets /workspace/assets --out "$OUT/raw" \
-      --res "${RES:-1280x720}" --samples "${SAMPLES:-64}" --engine "${ENGINE:-cycles}" --device gpu "$@" 2>&1 \
+      --res "${RES:-1280x720}" --samples "${SAMPLES:-16}" --fps "${FPS:-24}" --engine "${ENGINE:-cycles}" --device gpu "$@" 2>&1 \
       | grep --line-buffered -E "^\[shock\]|^\[cars\]|people|city built|shards|Error|Traceback|File \"" || true
 echo "[shock] render time: $(( ($(date +%s) - START) / 60 )) min"
-python3 "$ROOT/videos/asteroid/shock_test_post.py" "$OUT"
+python3 "$ROOT/videos/asteroid/shock_test_post.py" "$OUT" "${FPS:-24}"

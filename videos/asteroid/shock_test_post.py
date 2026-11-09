@@ -9,7 +9,7 @@ from overlay import compose
 from sfx import *  # noqa
 from PIL import Image
 
-out = sys.argv[1]; FPS = 30; T0 = 170.0; T_SHOCK = 4.0; DUR = 12.0
+out = sys.argv[1]; FPS = int(sys.argv[2]) if len(sys.argv) > 2 else 24; T0 = 170.0; T_SHOCK = 4.0; DUR = 12.0
 raw = sorted(glob.glob(os.path.join(out, 'raw', 'frame_*.png')))
 comp = os.path.join(out, 'comp'); os.makedirs(comp, exist_ok=True)
 for p in raw:
